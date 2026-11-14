@@ -8961,8 +8961,7 @@ export default function App() {
                     }`}
                   >
                     <div className="text-[9.5px]">{p.id}</div>
-                    <div className="text-[8px] text-slate-400 truncate">{p.label.split(' ')[1]}</div>
-                  </button>
+                    <div className="text-[8px] text-slate-400 truncate">{(p.label || p.name || '').split(' ')[1] || ''}</div>                  </button>
                 ))}
               </div>
             </div>
