@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { formatYen, formatNum } from './lib/format.js';
 import { calcBulkPurchase, calcBulkSingleResource } from './lib/purchase.js';
+import { createSeed, nextRandom } from './lib/rng.js';
 
 const SAVE_KEY = 'football_chronicle_v0_12_save';
 const LEGACY_SAVE_KEYS = [
@@ -2790,6 +2791,10 @@ export default function App() {
         tacticalMastery,
         euroMastery,
 
+        // 周回ごとに新しい乱数の種を引く。
+        // シミュレーションで固定したいときは生成後に上書きする。
+        rngState: createSeed(),
+
         legacyPoints,
         legacyUpgrades: { ...legacyUpgrades },
         qolToggles: {
@@ -3451,7 +3456,7 @@ export default function App() {
         0.3,
         0.025 + (u.tactics_note || 0) * 0.004 + (g.dribbler_dna || 0) * 0.006 + (s.endlessInvest?.endless_ai || 0) * 0.003
       );
-      const isCrit = Math.random() < critChance;
+      const isCrit = nextRandom(s) < critChance;
       const critMult = isCrit ? 7.0 : 1.0;
 
       const memLv = s.legacyUpgrades?.growth_memory || 0;
@@ -3871,7 +3876,7 @@ export default function App() {
         let p = 1.0;
         while (k < 7) {
           k += 1;
-          p *= Math.random();
+          p *= nextRandom(s);
           if (p <= L) break;
         }
         return Math.min(6, k - 1);
@@ -3906,8 +3911,8 @@ export default function App() {
       let myG = 0;
       let myA = 0;
       for (let i = 0; i < myGoals; i++) {
-        if (Math.random() < goalShare) myG += 1;
-        else if (Math.random() < assistShare) myA += 1;
+        if (nextRandom(s) < goalShare) myG += 1;
+        else if (nextRandom(s) < assistShare) myA += 1;
       }
       myG = Math.min(3, myG);
       myA = Math.min(2, myA);
@@ -4156,10 +4161,10 @@ export default function App() {
   // --- ランダム人生遭遇イベント（未来予知競馬的中イベント含む） ---
   const triggerRandomLifeEvent = useCallback(
     (s) => {
-      if (Math.random() > 0.09) return;
+      if (nextRandom(s) > 0.09) return;
       const rating = getTotalRating(s);
       const isOverpowered = rating >= 25 || (s.totalGenerations || s.generation) >= 2;
-      const roll = Math.random();
+      const roll = nextRandom(s);
       if (roll < 0.25) {
         const gain = Number((0.22 + s.level * 0.03).toFixed(2));
         applyStatGrowth(s, 'tec', gain);
@@ -4231,11 +4236,11 @@ export default function App() {
 
       // 子ども成長＆24歳以上で自動サッカーデビュー（ランダム性別・才能＆専用ゲノム！）
       if (newState.life?.hasChild && !newState.life?.childActive && newState.age >= 24) {
-        const isDaughter = Math.random() < 0.5;
+        const isDaughter = nextRandom(newState) < 0.5;
         const talents = isDaughter
           ? ['天賦の司令塔タイプ', '音速ウインガータイプ', '天才ファンタジスタタイプ']
           : ['剛腕ストライカータイプ', '鉄壁センターバックタイプ', '無尽蔵エンジンタイプ'];
-        const chosenTalent = talents[Math.floor(Math.random() * talents.length)];
+        const chosenTalent = talents[Math.floor(nextRandom(newState) * talents.length)];
         newState.life = {
           ...newState.life,
           status: `親子二代現役選手（${isDaughter ? '娘' : '息子'}デビュー済）`,
@@ -4475,7 +4480,7 @@ export default function App() {
               newState.unlockedCharms = [...newState.unlockedCharms, 'charm_lover'];
             }
           }
-          if (newState.life.married && !newState.life.hasChild && newState.age >= 20 && Math.random() < 0.18) {
+          if (newState.life.married && !newState.life.hasChild && newState.age >= 20 && nextRandom(newState) < 0.18) {
             newState.life = {
               ...newState.life,
               hasChild: true,
@@ -4499,7 +4504,7 @@ export default function App() {
       }
 
       // 結婚済みの場合、時間経過で自然に第一子誕生判定
-      if (newState.life.married && !newState.life.hasChild && newState.age >= 20 && Math.random() < 0.16) {
+      if (newState.life.married && !newState.life.hasChild && newState.age >= 20 && nextRandom(newState) < 0.16) {
         newState.life = {
           ...newState.life,
           hasChild: true,
@@ -5498,13 +5503,15 @@ export default function App() {
       const rivalName = isEuro ? euroObj.rivalName : tierObj.name;
       const rivalPow = isEuro ? euroObj.rivalRating : prev.rival?.rating || 18;
       const myPow = getTotalRating(prev);
-      const isWin = myPow >= rivalPow * 0.94 || Math.random() < (myPow / Math.max(1, rivalPow)) * 0.45;
 
       const next = {
         ...prev,
         stamina: Number((prev.stamina - 12).toFixed(2)),
         mental: Number((prev.mental - 10).toFixed(2))
       };
+
+      // 乱数は next の種を進める。prev を触ると前の state を汚す
+      const isWin = myPow >= rivalPow * 0.94 || nextRandom(next) < (myPow / Math.max(1, rivalPow)) * 0.45;
 
       if (isWin) {
         const nextWins = (prev.rival?.winsAgainst || 0) + 1;
