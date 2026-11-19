@@ -7,6 +7,9 @@ export default defineConfig({
   plugins: [react()],
   test: {
     testTimeout: 60000,
-    hookTimeout: 30000
+    hookTimeout: 30000,
+    // *.measure.* は「テスト」ではなく実測なので通常の run からは外す。
+    // 実行は npm run measure
+    exclude: ['**/node_modules/**', '**/dist/**', '**/*.measure.*']
   }
 });

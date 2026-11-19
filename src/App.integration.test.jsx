@@ -15,59 +15,14 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.jsx';
-
-const SAVE_KEY = 'football_chronicle_v0_12_save';
-
-/** 1ヶ月(=1ティック)ずつ時間を進める */
-async function advanceMonths(months) {
-  for (let i = 0; i < months; i++) {
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
-  }
-}
-
-/** 現在のセーブデータを読む */
-function readSave() {
-  const raw = localStorage.getItem(SAVE_KEY);
-  return raw ? JSON.parse(raw) : null;
-}
-
-/** モーダルを抜けてゲームを開始する */
-async function startNewCareer() {
-  await act(async () => {
-    render(<App />);
-  });
-
-  // セーブがない状態では選手クリエイトモーダルが先に出る
-  // （チュートリアルは creatorModal が閉じてから表示される）
-  await act(async () => {
-    screen.getByRole('button', { name: /キャリアを開始する/ }).click();
-  });
-
-  await closeTutorialIfOpen();
-}
-
-/**
- * モーダルの誤爆防止ガードを超えるまで待つ。
- * handleSelectCareerPath / handleProceedFromTruckModal は、モーダルが開いてから
- * 850ms 経つまでクリックを無視する（連打で意図せず選んでしまうのを防ぐため）。
- */
-async function passModalGuard() {
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(900);
-  });
-}
-
-/** チュートリアルが出ていれば閉じる。開いている間はゲームループが止まる */
-async function closeTutorialIfOpen() {
-  const tutorial = screen.queryByRole('button', { name: /理解してプレイ開始/ });
-  if (tutorial) {
-    await act(async () => {
-      tutorial.click();
-    });
-  }
-}
+import {
+  advanceMonths,
+  advanceUntilRetirement,
+  closeTutorialIfOpen,
+  passModalGuard,
+  readSave,
+  startNewCareer
+} from './test-helpers/gameHarness.jsx';
 
 beforeEach(() => {
   localStorage.clear();
@@ -208,38 +163,6 @@ describe('ゲームが進行する', () => {
   });
 });
 
-/** 進路選択モーダルが出ていたら、選べる最初の選択肢を選ぶ */
-async function resolveCareerModalIfOpen() {
-  const save = readSave();
-  if (save?.pendingModal?.type !== 'career') return false;
-
-  const option = save.pendingModal.modal.options.find((o) => o.unlocked);
-  expect(option, '選択可能な進路が1つもない').toBeTruthy();
-
-  await passModalGuard();
-  const button = screen
-    .getAllByRole('button')
-    .find((b) => b.textContent.includes(option.title));
-  expect(button, `進路ボタンが見つからない: ${option.title}`).toBeTruthy();
-
-  await act(async () => {
-    button.click();
-  });
-  return true;
-}
-
-/** 進路選択を自動で捌きながら、引退（truck）が出るまで時間を進める */
-async function advanceUntilRetirement(maxMonths) {
-  for (let i = 0; i < maxMonths; i++) {
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
-    if (readSave()?.pendingModal?.type === 'truck') return true;
-    await resolveCareerModalIfOpen();
-  }
-  return false;
-}
-
 describe('引退とタイムリープ（周回が到達不能だった箇所の回帰テスト）', () => {
   it('22歳4月の強制タイムリープが発火し、第2周目を開始できる', async () => {
     await startNewCareer();
@@ -255,7 +178,7 @@ describe('引退とタイムリープ（周回が到達不能だった箇所の�
     // タイムリープ演出 -> 選手クリエイト
     await passModalGuard();
     await act(async () => {
-      screen.getByRole('button', { name: /タイムリープする/ }).click();
+      screen.getByRole('button', { name: /5歳の春へタイムリープする/ }).click();
     });
 
     await act(async () => {
@@ -280,7 +203,7 @@ describe('引退とタイムリープ（周回が到達不能だった箇所の�
 
     await passModalGuard();
     await act(async () => {
-      screen.getByRole('button', { name: /タイムリープする/ }).click();
+      screen.getByRole('button', { name: /5歳の春へタイムリープする/ }).click();
     });
     await act(async () => {
       screen.getByRole('button', { name: /キャリアを開始する/ }).click();

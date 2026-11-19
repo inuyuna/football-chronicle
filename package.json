@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "check:undef": "node scripts/check-undefined.mjs",
     "check": "npm run lint && npm run check:undef && npm run test && npm run build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "measure": "vitest run --config vitest.measure.config.js"
   },
   "dependencies": {
     "lucide-react": "^1.73.0",
