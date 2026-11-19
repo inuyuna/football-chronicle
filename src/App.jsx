@@ -3208,10 +3208,24 @@ export default function App() {
     if (gameSpeed === 8 && (gameState.ascensionUpgrades?.speed_8x || 0) < 1) setGameSpeed(1);
   }, [gameSpeed, gameState.legacyUpgrades, gameState.ascensionUpgrades]);
 
-  // オートセーブ
+  // ゲームループが積んだモーダル要求を取り出して開く
+  useEffect(() => {
+    const pending = gameState.pendingModal;
+    if (!pending) return;
+    modalOpenedAtRef.current = Date.now();
+    if (pending.type === 'career') {
+      setCareerChoiceModal(pending.modal);
+    } else if (pending.type === 'truck') {
+      setTruckEventModal(pending.modal);
+    }
+    setGameState((prev) => ({ ...prev, pendingModal: null }));
+  }, [gameState.pendingModal]);
+
+  // オートセーブ（pendingModal は一時的なUI要求なので永続化しない）
   useEffect(() => {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(gameState));
+      const { pendingModal: _omit, ...persistable } = gameState;
+      localStorage.setItem(SAVE_KEY, JSON.stringify(persistable));
     } catch (e) {
       // ignore
     }
@@ -5070,7 +5084,6 @@ export default function App() {
 
     const tickMs = Math.max(125, Math.floor(1000 / gameSpeed));
     const timer = setInterval(() => {
-      let pendingModal = null;
       setGameState((prev) => {
         if (prev.isRetired) return prev;
         const next = {
@@ -5101,18 +5114,12 @@ export default function App() {
           careerPathWins: { ...prev.careerPathWins },
           careerPathMatches: { ...prev.careerPathMatches }
         };
-        pendingModal = advanceOneMonth(next);
+        // advanceOneMonth の戻り値（進路選択・タイムリープ）は state に載せて運ぶ。
+        // setGameState の updater は非同期に実行されるため、外側のローカル変数へ
+        // 書いて直後に読む形では常に null になり、モーダルが永久に捨てられる。
+        next.pendingModal = advanceOneMonth(next) || null;
         return next;
       });
-
-      if (pendingModal) {
-        modalOpenedAtRef.current = Date.now();
-        if (pendingModal.type === 'career') {
-          setCareerChoiceModal(pendingModal.modal);
-        } else if (pendingModal.type === 'truck') {
-          setTruckEventModal(pendingModal.modal);
-        }
-      }
     }, tickMs);
 
     return () => clearInterval(timer);
@@ -6629,6 +6636,25 @@ export default function App() {
 
   const bodyGenomesList = BASE_GENOME_DEF.filter((d) => d.isBodyGenome);
   const bodyGenomesMasteredCount = bodyGenomesList.filter((d) => (gameState.genomes?.[d.id] || 0) >= 5).length;
+
+  // --- 進路選択カード内に「この進路で育つ遺伝子」の現在地を表示する ---
+  const renderGenomeTag = (genomeId, genomeName) => {
+    if (!genomeId) return null;
+    const lv = gameState.genomes?.[genomeId] || 0;
+    const isArchived = (gameState.archivedGenomes || []).includes(genomeId);
+    const label = isArchived ? `極意到達・超越Lv.${lv}` : lv > 0 ? `Lv.${lv} / 5` : '未覚醒';
+    return (
+      <div className="flex items-center justify-between gap-1 mt-1 pt-1 border-t border-slate-800">
+        <span className="text-[9px] text-sky-300 truncate">🧬 {genomeName}</span>
+        <span
+          className={`font-mono text-[8.5px] shrink-0 ${isArchived ? 'text-amber-300' : lv > 0 ? 'text-emerald-400' : 'text-slate-500'}`}
+        >
+          {label}
+        </span>
+      </div>
+    );
+  };
+
 
   return (
     <div className="min-h-screen md:h-screen bg-slate-950 text-slate-200 flex flex-col font-sans select-none overflow-x-hidden md:overflow-hidden">
@@ -8991,7 +9017,7 @@ export default function App() {
                 <button
                   key={opt.id}
                   disabled={!opt.unlocked}
-                  onClick={() => applyCareerChoice(opt)}
+                  onClick={() => handleSelectCareerPath(opt)}
                   className={`w-full p-2 border text-left block ${
                     opt.unlocked
                       ? 'bg-slate-950 hover:bg-slate-800 border-sky-500/80 cursor-pointer'
@@ -9025,7 +9051,7 @@ export default function App() {
               獲得継承結晶: 💎 +{formatNum(legacyGain)}（次の周回で倍速解放や才能上限を強化しよう！）
             </div>
             <button
-              onClick={() => openReincarnateCreator(null)}
+              onClick={() => handleProceedFromTruckModal()}
               className="w-full py-2 bg-purple-700 hover:bg-purple-600 border border-purple-300 text-white font-bold text-xs cursor-pointer"
             >
               5歳の春へタイムリープする
