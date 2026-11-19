@@ -1,12 +1,16 @@
 {
-  "name": "vite-react-typescript-starter",
+  "name": "football-chronicle",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.12.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:undef": "node scripts/check-undefined.mjs",
+    "check": "npm run lint && npm run check:undef && npm run test && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -24,6 +28,7 @@
     "@vitejs/plugin-react": "^5.2.0",
     "oxlint": "^1.92.0",
     "typescript": "~7.0.2",
-    "vite": "^7.3.8"
+    "vite": "^7.3.8",
+    "vitest": "^3.2.7"
   }
 }

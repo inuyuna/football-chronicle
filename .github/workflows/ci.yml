@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: lint / 未定義識別子 / テスト / ビルド
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: 依存をインストール
+        run: npm ci
+
+      - name: lint
+        run: npm run lint
+
+      # 存在しない関数を呼ぶコードを止める。
+      # 実際にこれを素通りして本番が落ちたことがあるので独立したステップにしている。
+      - name: 未定義識別子のチェック
+        run: npm run check:undef
+
+      - name: テスト
+        run: npm run test
+
+      - name: ビルド
+        run: npm run build
+
+      - name: ビルド成果物をアップロード
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 7

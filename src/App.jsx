@@ -26,6 +26,8 @@ import {
   Heart,
   CheckSquare
 } from 'lucide-react';
+import { formatYen, formatNum } from './lib/format.js';
+import { calcBulkPurchase, calcBulkSingleResource } from './lib/purchase.js';
 
 const SAVE_KEY = 'football_chronicle_v0_12_save';
 const LEGACY_SAVE_KEYS = [
@@ -2053,69 +2055,6 @@ const ENDGAME_TRIALS_DEF = [
   }
 ];
 
-// --- 日本円＆一般数値フォーマット（万・億・兆対応） ---
-const formatYen = (val) => {
-  const num = Math.floor(Number(val || 0));
-  if (!Number.isFinite(num)) return '0円';
-  const abs = Math.abs(num);
-  if (abs >= 1e12) return `${(num / 1e12).toFixed(2)}兆円`;
-  if (abs >= 1e8) return `${(num / 1e8).toFixed(2)}億円`;
-  if (abs >= 1e4) return `${(num / 1e4).toFixed(1)}万円`;
-  return `${num.toLocaleString('ja-JP')}円`;
-};
-
-const formatNum = (val, decimals = 0) => {
-  const num = Number(val || 0);
-  if (!Number.isFinite(num)) return '0';
-  const abs = Math.abs(num);
-  if (abs >= 1e12) return `${(num / 1e12).toFixed(2)}兆`;
-  if (abs >= 1e8) return `${(num / 1e8).toFixed(2)}億`;
-  if (abs >= 1e4) return `${(num / 1e4).toFixed(1)}万`;
-  if (decimals > 0) {
-    return num.toLocaleString('ja-JP', {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals
-    });
-  }
-  return Math.floor(num).toLocaleString('ja-JP');
-};
-
-// --- 一括購入計算ヘルパー（1x / 10x / MAX 全項目統一） ---
-const calcBulkPurchase = (curLv, maxLv, buyAmount, availG, availPt, baseG, basePt, growth) => {
-  const limit = buyAmount === 'max' ? maxLv - curLv : Math.min(buyAmount, maxLv - curLv);
-  let count = 0;
-  let totalG = 0;
-  let totalPt = 0;
-  for (let i = 0; i < limit; i++) {
-    const lv = curLv + i;
-    const cG = Math.floor(baseG * Math.pow(growth, lv));
-    const cPt = Math.floor(basePt * Math.pow(growth, lv));
-    if (availG >= totalG + cG && availPt >= totalPt + cPt) {
-      totalG += cG;
-      totalPt += cPt;
-      count += 1;
-    } else {
-      break;
-    }
-  }
-  return { count, totalG, totalPt, nextLv: curLv + count };
-};
-
-const calcBulkSingleResource = (curLv, maxLv, buyAmount, availRes, baseCost, growth) => {
-  const limit = buyAmount === 'max' ? maxLv - curLv : Math.min(buyAmount, maxLv - curLv);
-  let count = 0;
-  let totalCost = 0;
-  for (let i = 0; i < limit; i++) {
-    const c = Math.floor(baseCost * Math.pow(growth, curLv + i));
-    if (availRes >= totalCost + c) {
-      totalCost += c;
-      count += 1;
-    } else {
-      break;
-    }
-  }
-  return { count, totalCost, nextLv: curLv + count };
-};
 
 // --- ライフステージ・衰え期判定 ---
 const getCareerStageInfo = (age, maxRetireAge) => {
@@ -3218,14 +3157,15 @@ export default function App() {
     } else if (pending.type === 'truck') {
       setTruckEventModal(pending.modal);
     }
-    setGameState((prev) => ({ ...prev, pendingModal: null }));
   }, [gameState.pendingModal]);
 
-  // オートセーブ（pendingModal は一時的なUI要求なので永続化しない）
+  // オートセーブ
+  // pendingModal も保存する。進路選択モーダルが開いたままタブを閉じても、
+  // 次回ロード時に上の useEffect が拾って開き直す。保存しないと
+  // triggeredEvents だけが立って進路選択が永久に失われる。
   useEffect(() => {
     try {
-      const { pendingModal: _omit, ...persistable } = gameState;
-      localStorage.setItem(SAVE_KEY, JSON.stringify(persistable));
+      localStorage.setItem(SAVE_KEY, JSON.stringify(gameState));
     } catch (e) {
       // ignore
     }
@@ -5086,6 +5026,11 @@ export default function App() {
     const timer = setInterval(() => {
       setGameState((prev) => {
         if (prev.isRetired) return prev;
+        // モーダル待ちの間は時間を進めない。
+        // 依存配列（careerChoiceModal 等）だけに頼ると、モーダルを開く
+        // useEffect が走るまでの1ティック分で次の月が進み、せっかく積んだ
+        // pendingModal が上書きで消えることがある。
+        if (prev.pendingModal) return prev;
         const next = {
           ...prev,
           stats: { ...prev.stats },
@@ -5117,7 +5062,9 @@ export default function App() {
         // advanceOneMonth の戻り値（進路選択・タイムリープ）は state に載せて運ぶ。
         // setGameState の updater は非同期に実行されるため、外側のローカル変数へ
         // 書いて直後に読む形では常に null になり、モーダルが永久に捨てられる。
-        next.pendingModal = advanceOneMonth(next) || null;
+        // 返ってきたときだけ積む。null で上書きしない。
+        const requested = advanceOneMonth(next);
+        if (requested) next.pendingModal = requested;
         return next;
       });
     }, tickMs);
@@ -6170,6 +6117,7 @@ export default function App() {
             : prev.achievements
       };
       addLogMsg(next, `🧭【進路決定】「${opt.title}」へ進んだ！`, 'story');
+      next.pendingModal = null;
       return next;
     });
     setCareerChoiceModal(null);
@@ -6179,6 +6127,7 @@ export default function App() {
   const handleProceedFromTruckModal = () => {
     if (Date.now() - modalOpenedAtRef.current < 850) return;
     setTruckEventModal(null);
+    setGameState((prev) => ({ ...prev, pendingModal: null }));
     openCreatorModal('reincarnate');
   };
 
