@@ -73,7 +73,7 @@ const BUY_PRIORITY = [
   '鉄人の肉体遺伝子' // 現役寿命と初期最大体力
 ];
 
-const GENERATIONS = Number(process.env.MEASURE_GENERATIONS || 12);
+const GENERATIONS = Number(process.env.MEASURE_GENERATIONS || 15);
 
 beforeEach(() => {
   localStorage.clear();
@@ -107,6 +107,14 @@ describe('周回カーブの実測', () => {
       const lu = readLegacyUpgrades();
       const nextReq = REQ_RATING[s.categoryId + 1];
 
+      // 第2転生（Ascension）の条件:
+      //   結晶強化の合計Lv >= 60 + ascCount*35  かつ  categoryId >= 12 + ascCount
+      const legLvSum = Object.values(lu).reduce((a, b) => a + b, 0);
+      const ascCount = s.ascensionCount || 0;
+      const reqLv = 60 + ascCount * 35;
+      const reqCat = Math.min(18, 12 + ascCount);
+      const canAscend = legLvSum >= reqLv && s.categoryId >= reqCat;
+
       rows.push({
         周回: gen,
         引退: s.age,
@@ -118,6 +126,8 @@ describe('周回カーブの実測', () => {
         上限突破Lv: lu.cap_breaker || 0,
         記憶Lv: lu.growth_memory || 0,
         結晶残: s.legacyPoints || 0,
+        '強化計Lv': legLvSum,
+        '第2転生': canAscend ? '可' : `Lv${legLvSum}/${reqLv} cat${s.categoryId}/${reqCat}`,
         月数: months
       });
 

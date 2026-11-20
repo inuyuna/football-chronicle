@@ -40,6 +40,14 @@ const LEGACY_SAVE_KEYS = [
   'football_chronicle_v13_save'
 ];
 const CURRENT_TUTORIAL_VERSION = 12;
+
+// 周回ごとに能力上限の土台が何倍になるか。
+//
+// もとは 7.0 + (generation-1) * 1.1 の足し算だったが、カテゴリの必要総合力は
+// 58→82→125→195→310→500→850 と掛け算で伸びるので、足し算では永久に
+// 追いつけなかった（12周してもカテゴリが1段も上がらない）。
+// 実測の根拠は docs/BALANCE_LOG.md。
+const GENERATION_CAP_GROWTH = 1.7;
 const ALL_DRILL_IDS = ['tech_drill', 'phy_drill', 'tactics_video', 'shoot_drill', 'mental_image'];
 
 // --- ポジション定義（全7種・転生時に選択） ---
@@ -2189,11 +2197,7 @@ const computeIndividualStatCaps = (
   age = 18
 ) => {
   const isFirstGen = generation === 1 && ascensionCount === 0;
-  // 【実験】周回ごとの伸びを線形から指数へ。
-  // カテゴリの必要値が 58→82→125→195→310→500→850 と指数的に伸びるので、
-  // 線形の baseCap では永久に追いつけなかった（docs/GAME_DESIGN.md §7-1）。
-  const GEN_GROWTH = Number(process.env?.FC_GEN_GROWTH) || 1.7;
-  const baseCap = isFirstGen ? 6.2 : 7.0 * Math.pow(GEN_GROWTH, generation - 2);
+  const baseCap = isFirstGen ? 6.2 : 7.0 * Math.pow(GENERATION_CAP_GROWTH, generation - 2);
   const breakerBonus = (legacyUpgrades.cap_breaker || 0) * 2.0;
   const underdogBonus = Math.min(5, genomes.underdog_hero_dna || 0) * 1.5;
   const euroSurvivalBonus = Math.min(5, genomes.euro_survival_dna || 0) * 2.0;
@@ -6531,9 +6535,19 @@ export default function App() {
 
   const legLvSum = Object.values(gameState.legacyUpgrades || {}).reduce((a, b) => a + b, 0);
   const ascCount = gameState.ascensionCount || 0;
-  const canUnlockAscension = ascCount >= 1 || legLvSum >= 60 || (gameState.totalGenerations || gameState.generation) >= 5;
-  const ascReqCrystalLv = 60 + ascCount * 35;
-  const ascReqCatId = Math.min(18, 12 + ascCount);
+  // 第2転生以降の解放条件。
+  //
+  // 設計意図（本人）:
+  //   「第二転生を J1 から海外にいくタイミングで行うようなバランスに」
+  //   「第三転生は、海外トップリーグで活躍できるかできないかレベルから、
+  //     完全無双できるようになる段階」
+  //
+  // 実測（docs/BALANCE_LOG.md）では 10周目に J1 / 結晶強化計Lv28、
+  // 13周目に欧州中堅 / Lv33 なので、旧条件（Lv60・cat12）だと
+  // Lv60 到達が27周目あたりになり、意図より15周ぶん遅かった。
+  const canUnlockAscension = ascCount >= 1 || legLvSum >= 24 || (gameState.totalGenerations || gameState.generation) >= 5;
+  const ascReqCrystalLv = 28 + ascCount * 12;
+  const ascReqCatId = Math.min(18, 11 + ascCount);
   const canAscendNow = legLvSum >= ascReqCrystalLv && gameState.categoryId >= ascReqCatId;
   const ascensionGainPreview = calculateAscensionGain(gameState);
 
