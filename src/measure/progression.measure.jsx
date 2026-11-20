@@ -3,24 +3,27 @@
 // 周回カーブの実測。テストではなく計測なので npm run measure で明示的に動かす。
 //
 // 目的:
-//   docs/GAME_DESIGN.md の目標カーブ（1周目=大学でも通用しない、3周目=プロ最底辺、
-//   5周目=J2、7周目=J1、9周目=海外）に対して、
-//   いまの実装が実際どこまで到達するのかを数字で出す。
+//   docs/GAME_DESIGN.md の目標カーブに対して、いまの実装が実際どこまで
+//   到達するのかを数字で出す。
 //
 // 条件:
-//   本線は「結晶あり」。転生するたびに UI から継承結晶を使い切る。
-//   これが実際のゲームデザイン（転生 → 結晶で強化 → また転生）に対応する。
+//   実プレイと同じ流れを機械的に繰り返す。
+//     引退 → タイムリープ → 条件を満たせば第2転生以降 → 聖杯/結晶を使い切る
 //   進路は「選べる最初の選択肢」を機械的に選ぶ。
+//   速度アップと自動化は買わない（強さに効くものだけを見る）。
 
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import {
   advanceUntilRetirement,
+  buyAscensionUpgrades,
   buyLegacyUpgrades,
   doTimeLeap,
+  readAscensionState,
   readLegacyUpgrades,
   readSave,
-  startNewCareer
+  startNewCareer,
+  tryAscension
 } from '../test-helpers/gameHarness.jsx';
 
 // App.jsx の CATEGORIES と対応（表示用。import できないので写し）
@@ -46,8 +49,9 @@ const CATEGORY_NAMES = [
   '宇宙最高神'
 ];
 
-// カテゴリに上がるのに必要な総合力（CATEGORIES.reqRating の写し）
-const REQ_RATING = [0, 6.5, 13, 21, 31, 45, 58, 82, 125, 195, 310, 500, 850, 1500, 2800, 6500, 18000, 55000, 180000];
+const REQ_RATING = [
+  0, 6.5, 13, 21, 31, 45, 58, 82, 125, 195, 310, 500, 850, 1500, 2800, 6500, 18000, 55000, 180000
+];
 
 // docs/GAME_DESIGN.md §4 の目標
 const TARGET = {
@@ -65,15 +69,23 @@ const TARGET = {
   12: { catId: 13, label: 'CC主力' }
 };
 
-// 転生直後に買う優先順。強さに直結するものから。
-const BUY_PRIORITY = [
-  '才能限界突破', // 全能力の成長上限 +2.0/Lv（最大120Lv）
-  'タイムリープの記憶', // 全練習効率 +11%/Lv（最大60Lv）
-  '明晰な戦術脳', // 精神上限と戦術Pt
-  '鉄人の肉体遺伝子' // 現役寿命と初期最大体力
+// 継承結晶（毎周）で買う優先順
+const LEGACY_PRIORITY = [
+  '才能限界突破', // 全能力の成長上限 +2.0/Lv
+  'タイムリープの記憶', // 全練習効率 +11%/Lv
+  '明晰な戦術脳',
+  '鉄人の肉体遺伝子'
 ];
 
-const GENERATIONS = Number(process.env.MEASURE_GENERATIONS || 15);
+// 聖杯（第2転生以降）で買う優先順。乗算で効くものから
+const ASCENSION_PRIORITY = [
+  '神域・才能器倍率', // 能力上限に乗算
+  '天賦の学習速度', // 成長量に乗算
+  '輪廻結晶の錬成炉', // 結晶の獲得量を増幅
+  '神速タイムフロー'
+];
+
+const GENERATIONS = Number(process.env.MEASURE_GENERATIONS || 20);
 
 beforeEach(() => {
   localStorage.clear();
@@ -87,64 +99,97 @@ afterEach(() => {
 });
 
 describe('周回カーブの実測', () => {
-  it(`${GENERATIONS}周ぶん回す（転生のたびに結晶を使い切る）`, async () => {
+  it(`${GENERATIONS}周ぶん回す（結晶・聖杯を使い切り、条件を満たせば第2転生）`, async () => {
     await startNewCareer();
 
     const rows = [];
+    const ascensionEvents = [];
     let totalMonths = 0;
 
     for (let gen = 1; gen <= GENERATIONS; gen++) {
       const before = readSave();
       const startMonth = before.age * 12 + before.month;
 
-      const retired = await advanceUntilRetirement(700);
+      // 高いカテゴリに居るあいだに第2転生の条件を満たしたら、その場で転生する
+      let ascendedMidRun = false;
+      const outcome = await advanceUntilRetirement(700, undefined, async () => {
+        const cur = readSave();
+        if (!cur) return false;
+        const lv = Object.values(cur.legacyUpgrades || {}).reduce((a, b) => a + b, 0);
+        const ac = cur.ascensionCount || 0;
+        if (lv < 28 + ac * 12) return false;
+        if (cur.categoryId < Math.min(18, 11 + ac)) return false;
+
+        const res = await tryAscension();
+        const ok = res.ok;
+        if (!ok) {
+          // eslint-disable-next-line no-console
+          console.log(`  [第${ac + 2}段階転生に失敗] 周回${gen} ${cur.age}歳 Lv${lv} cat${cur.categoryId}: ${res.reason}`);
+        }
+        if (ok) {
+          const after = readAscensionState();
+          ascensionEvents.push(
+            `周回${gen}の途中（${cur.age}歳 / ${CATEGORY_NAMES[cur.categoryId]}）で` +
+              `第${after.ascensionCount + 1}段階転生（聖杯 +${after.ascensionPoints}）`
+          );
+          await buyAscensionUpgrades(ASCENSION_PRIORITY);
+          ascendedMidRun = true;
+        }
+        return ok;
+      });
+      const retired = outcome === 'retired';
       const s = readSave();
       const months = s.age * 12 + s.month - startMonth;
       totalMonths += months;
 
       const target = TARGET[gen];
-      const peak = Math.round(s.peakRatingReached || 0);
       const lu = readLegacyUpgrades();
-      const nextReq = REQ_RATING[s.categoryId + 1];
-
-      // 第2転生（Ascension）の条件:
-      //   結晶強化の合計Lv >= 60 + ascCount*35  かつ  categoryId >= 12 + ascCount
       const legLvSum = Object.values(lu).reduce((a, b) => a + b, 0);
-      const ascCount = s.ascensionCount || 0;
-      const reqLv = 60 + ascCount * 35;
-      const reqCat = Math.min(18, 12 + ascCount);
-      const canAscend = legLvSum >= reqLv && s.categoryId >= reqCat;
+      const asc = readAscensionState();
+      const reqLv = 28 + asc.ascensionCount * 12;
+      const reqCat = Math.min(18, 11 + asc.ascensionCount);
 
       rows.push({
         周回: gen,
+        転生段階: asc.ascensionCount,
         引退: s.age,
         到達: `${s.categoryId} ${CATEGORY_NAMES[s.categoryId] || '?'}`,
         目標: target ? `${target.catId} ${target.label}` : '-',
         判定: target ? (s.categoryId >= target.catId ? 'OK' : `不足-${target.catId - s.categoryId}`) : '-',
-        ピーク: peak,
-        次段に必要: nextReq ?? '-',
-        上限突破Lv: lu.cap_breaker || 0,
-        記憶Lv: lu.growth_memory || 0,
-        結晶残: s.legacyPoints || 0,
-        '強化計Lv': legLvSum,
-        '第2転生': canAscend ? '可' : `Lv${legLvSum}/${reqLv} cat${s.categoryId}/${reqCat}`,
+        ピーク: Math.round(s.peakRatingReached || 0),
+        次段: REQ_RATING[s.categoryId + 1] ?? '-',
+        強化計Lv: legLvSum,
+        聖杯: asc.ascensionPoints,
+        '次の転生条件': `Lv${legLvSum}/${reqLv} cat${s.categoryId}/${reqCat}`,
         月数: months
       });
 
-      if (gen < GENERATIONS) {
-        if (!retired) break;
-        await doTimeLeap();
-        await buyLegacyUpgrades(BUY_PRIORITY);
+      if (gen >= GENERATIONS) break;
+
+      if (ascendedMidRun) {
+        // 上位転生で既に新しい周回が始まっているのでタイムリープは不要
+        await buyLegacyUpgrades(LEGACY_PRIORITY);
+        continue;
       }
+      if (!retired) break;
+
+      await doTimeLeap();
+      await buyLegacyUpgrades(LEGACY_PRIORITY);
     }
 
     /* eslint-disable no-console */
-    console.log('\n===== 周回カーブ実測（転生のたびに結晶を使い切る）=====');
+    console.log('\n===== 周回カーブ実測 =====');
     console.table(rows);
+    if (ascensionEvents.length > 0) {
+      console.log('■ 上位転生の発生:');
+      for (const e of ascensionEvents) console.log(`  - ${e}`);
+    } else {
+      console.log('■ 上位転生は一度も発生しなかった');
+    }
     console.log(
       `合計 ${totalMonths} ヶ月 = 1倍速で約 ${Math.round(totalMonths / 60)} 分 ` +
         `/ 8倍速で約 ${Math.round((totalMonths * 0.125) / 60)} 分\n`
     );
     /* eslint-enable no-console */
-  }, 1800000);
+  }, 3600000);
 });

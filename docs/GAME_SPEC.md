@@ -230,12 +230,31 @@ Lv = floor( def.getStatVal(state) / def.step )   ※ maxLv でクランプ
 
 ---
 
-## 6. 試合（`simulateAutoMatch` / 3,747行）
+## 6. 試合（`simulateAutoMatch`）
 
 - 自分の戦力 vs `CATEGORIES[categoryId].oppPower`
 - POS の `matchWeight` と戦術スタイルの攻守倍率が効く
-- 乱数: 3,934 / 3,969 / 3,970 行（`p *= Math.random()` / ゴール・アシスト判定）
-- `peakRatingReached` をここで更新（3,738行）
+- 乱数は `nextRandom(s)`（戦力ゆらぎ / ゴール / アシスト判定）
+
+> ⚠️ **`peakRatingReached` は試合では更新されない。**
+> 更新しているのは `executeDrillInternal`（練習）の末尾。
+> つまり「ピーク総合力」は実質「練習を実行した時点の最高到達値」であり、
+> 一度も練習しないキャリアではずっと 0 のままになる。
+>
+> これは計測で実際に踏んだ。1周目は AUTO が未解放で手動クリックが前提なので、
+> 自動計測では練習が1回も走らず、1周目のピークが 0 と記録されていた。
+> 名前と実態が合っていないので、後でどちらかに寄せる。
+
+## 6-1. 🔴 1周目は手動クリックなしでは一切成長しない
+
+`unlocks.autoFeature` が立つまで練習は手動実行のみ。
+AUTO の解放は `executeDrillInternal` の中（練習の累積）で行われるため、
+**一度も練習をクリックしないと AUTO も永久に解放されない。**
+
+設計方針（[GAME_DESIGN.md](GAME_DESIGN.md) §6）では
+「1周目だけ手動を残す。ただし1周目は5分で終わらせる」としているので
+意図した挙動ではあるが、放置ゲームとしては
+「開いて放置しても何も起きない5分」になる点に注意。
 
 ---
 
