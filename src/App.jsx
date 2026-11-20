@@ -29,6 +29,7 @@ import {
 import { formatYen, formatNum } from './lib/format.js';
 import { calcBulkPurchase, calcBulkSingleResource } from './lib/purchase.js';
 import { createSeed, nextRandom } from './lib/rng.js';
+import { overCapRatio } from './lib/growth.js';
 
 const SAVE_KEY = 'football_chronicle_v0_12_save';
 const LEGACY_SAVE_KEYS = [
@@ -2362,7 +2363,7 @@ const applyStatGrowth = (s, key, rawDelta) => {
   const cap = s.statCaps[key] || 10;
   const hasBreak = Boolean(s.breakthroughs?.limit_break_manual);
   const ch4OverMult = s.completedChallenges?.includes('ch_half_cap') ? 2.5 : 1.0;
-  const baseOverRatio = (hasBreak ? 1 / 6 : 1 / 18) * ch4OverMult;
+  const baseOverRatio = overCapRatio(hasBreak, ch4OverMult);
 
   if (cur + rawDelta <= cap) {
     s.stats[key] = Number((cur + rawDelta).toFixed(4));
@@ -2524,7 +2525,7 @@ const getDrillEffectiveStats = (s, drill) => {
   const ch4OverMult = s.completedChallenges?.includes('ch_half_cap') ? 2.5 : 1.0;
   const excessRatio = Math.max(0, (curVal - capVal) / Math.max(8, capVal));
   const diminishing = 1 / (1 + excessRatio * 7.0);
-  const overRatio = (hasBreak ? 1 / 6 : 1 / 18) * ch4OverMult * diminishing;
+  const overRatio = overCapRatio(hasBreak, ch4OverMult) * diminishing;
   const estDelta = isCapped ? baseUnit * overRatio : baseUnit;
 
   return { effStam, effMent, estDelta, mLv, reps };
@@ -2665,9 +2666,12 @@ export default function App() {
 
       const posEventCaps = persistentPerks.posEventCaps || { tec: 0, phy: 0, iq: 0, sht: 0 };
       const rivalPerkCaps = persistentPerks.rivalPerkCaps || { tec: 0, phy: 0, iq: 0, sht: 0 };
-      const localClubLv = persistentPerks.localClubLv || 1;
-      const clubMates = persistentPerks.clubMates || { mate_gk: 1, mate_cb: 1, mate_cmf: 1, mate_wg: 1, mate_fw: 1 };
-      const clubFacilities = persistentPerks.clubFacilities || {
+      // 蒼空FCへの投資（クラブのレベル・同僚・施設）はタイムリープでリセットする。
+      // 時間が5歳の春まで巻き戻るので、建てた施設も育てた同僚も存在しない。
+      // docs/GAME_DESIGN.md §14-2。以前は persistentPerks から引き継いでいた。
+      const localClubLv = 1;
+      const clubMates = { mate_gk: 1, mate_cb: 1, mate_cmf: 1, mate_wg: 1, mate_fw: 1 };
+      const clubFacilities = {
         fac_turf: 0,
         fac_cafeteria: 0,
         fac_scout: 0,
@@ -2927,6 +2931,13 @@ export default function App() {
         upgrades: initUpgrades,
 
         unlocks: {
+          // 基礎の技術練習は最初から使える。
+          // ここに tech_drill が無かったため、JSX のフィルタ
+          // （DRILLS_DEF.filter(d => gameState.unlocks[d.id])）で
+          // 永久に表示されず、AUTO の候補からも外れていた。
+          // チュートリアルは「上の『コーン・ドリブル』で基礎を鍛えよう」と
+          // 案内しているのに、そのカードが存在しない状態だった。
+          tech_drill: true,
           phy_drill: isNextGen || isTwilightChallenge,
           tactics_video: isNextGen || isTwilightChallenge,
           shoot_drill: isNextGen || isTwilightChallenge,
@@ -5655,8 +5666,17 @@ export default function App() {
       const costM = 8;
       if (prev.money < costG || prev.mental < costM) return prev;
 
-      const isSwitch = typeId && prev.life.partnerType && prev.life.partnerType !== typeId;
-      const baseAff = isSwitch ? prev.partnerRecords?.[pType]?.maxAff || 0 : prev.life.affection || 0;
+      // 好感度はその人生のもの。タイムリープすれば関係はゼロから始まる
+      // （docs/GAME_DESIGN.md §2「記憶と経験以外は何も引き継がない」）。
+      // 以前は相手を切り替えたときに partnerRecords[相手].maxAff から再開していたため、
+      // 前世で結婚した相手を選ぶと1回のデートで即結婚になっていた。
+      // partnerRecords は図鑑（コンプ記録）専用にする。
+      const baseAff = prev.life.partnerType === pType ? prev.life.affection || 0 : 0;
+
+      // 18歳になるまでは結婚できない。好感度40で頭打ちにして、
+      // それ以上デートしても金と精神が減るだけ、という状態をなくす
+      if (baseAff >= 40 && prev.age < 18) return prev;
+
       const newAff = baseAff + 10;
       let married = false;
       let familyEventsAdd = 0;
@@ -7827,6 +7847,7 @@ export default function App() {
 
                   {investSubTab === 'club_hobby' && isNextGenUnlocked && (
                     <div className="space-y-1.5">
+                      {gameState.categoryId >= 12 ? (
                       <div className="bg-emerald-950/25 border border-emerald-700/80 p-1.5 space-y-1">
                         <div className="flex flex-wrap items-center justify-between gap-1">
                           <span className="font-bold text-[9.5px] text-emerald-300 flex items-center gap-1">
@@ -7957,6 +7978,15 @@ export default function App() {
                           })}
                         </div>
                       </div>
+                      ) : (
+                        <div className="bg-slate-950 border border-dashed border-slate-700 p-2 text-[9.5px] text-slate-400">
+                          🔒 <strong className="text-slate-300">地元クラブ「蒼空FC」への出資</strong>は、
+                          海外のクラブで稼げるようになってから解放される（欧州中堅リーグ到達）。
+                          <div className="text-[8.5px] text-slate-500 mt-0.5">
+                            子どものうちから地元クラブに資金を出して育成することはできない。
+                          </div>
+                        </div>
+                      )}
 
                       {/* 永続知識・趣味＆未来予知記憶 */}
                       <div className="bg-slate-950 border border-slate-800 p-1.5 space-y-1">
