@@ -117,3 +117,51 @@ export async function doTimeLeap() {
   });
   await closeTutorialIfOpen();
 }
+
+/**
+ * タイムリープタブを開いて、継承結晶アップグレードを優先順に買えるだけ買う。
+ *
+ * 実プレイと同じく UI 経由で買う（state を直接書き換えない）ので、
+ * 購入ハンドラ側の上限再計算もそのまま通る。
+ *
+ * @param {string[]} namePatterns アップグレード名の部分文字列を優先順に
+ * @returns {Promise<{opened: boolean, bought: Record<string, number>}>}
+ */
+export async function buyLegacyUpgrades(namePatterns) {
+  const tab = screen.getAllByRole('button').find((b) => b.textContent.includes('タイムリープ(+'));
+  if (!tab) return { opened: false, bought: {} };
+
+  await act(async () => {
+    tab.click();
+  });
+
+  // MAX 一括購入モードにする
+  const maxBtn = screen.getAllByRole('button').find((b) => b.textContent.trim() === 'MAX');
+  if (maxBtn) {
+    await act(async () => {
+      maxBtn.click();
+    });
+  }
+
+  const bought = {};
+  for (const pattern of namePatterns) {
+    // MAX でも結晶が足りなければ部分購入になるので、買えなくなるまで繰り返す
+    for (let i = 0; i < 60; i++) {
+      const btn = screen
+        .getAllByRole('button')
+        .find((b) => !b.disabled && b.textContent.includes(pattern));
+      if (!btn) break;
+      await act(async () => {
+        btn.click();
+      });
+      bought[pattern] = (bought[pattern] || 0) + 1;
+    }
+  }
+
+  return { opened: true, bought };
+}
+
+/** 現在の継承結晶アップグレードの取得状況を読む */
+export function readLegacyUpgrades() {
+  return readSave()?.legacyUpgrades || {};
+}
