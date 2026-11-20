@@ -54,6 +54,11 @@ const GENERATION_CAP_GROWTH = 1.7;
 // 1ヶ月=1ティックなので、1倍速なら約12分ぶん。長く離れても
 // 1キャリア（約30年=360ヶ月）を大きく超えて飛ばさないための上限。
 const MAX_OFFLINE_MONTHS = 480;
+
+// いまのカテゴリに残れる最低ライン。要求総合力のこの割合を下回ると降格する。
+const CONTRACT_KEEP_RATIO = 0.72;
+// 最下層（キッズスクール）でも契約がもらえなくなる総合力。ここで現役引退。
+const CONTRACT_FLOOR_RATING = 4.5;
 const ALL_DRILL_IDS = ['tech_drill', 'phy_drill', 'tactics_video', 'shoot_drill', 'mental_image'];
 
 // --- ポジション定義（全7種・転生時に選択） ---
@@ -4259,6 +4264,23 @@ export default function App() {
 
       const newRating = getTotalRating(s);
       const ascCount = s.ascensionCount || 0;
+      // --- 降格判定 ---
+      // 衰えて今のカテゴリの要求を大きく下回ったら、下のリーグへ落ちる。
+      // 最下層でも契約がもらえなくなったら、そこで現役生活が終わる。
+      // 「何歳で強制引退」ではなく「通用しなくなったら引退」という形にする。
+      while (s.categoryId > 0 && newRating < CATEGORIES[s.categoryId].reqRating * CONTRACT_KEEP_RATIO) {
+        const fromCat = CATEGORIES[s.categoryId];
+        s.categoryId -= 1;
+        const toCat = CATEGORIES[s.categoryId];
+        s.clubName = toCat.clubDefault;
+        const relMsg = `📉【契約打ち切り】${fromCat.name}での契約を更新されず、${toCat.name}へ。「もう以前の動きではない」とコーチは言った。`;
+        s.storyFlavor = relMsg;
+        addLogMsg(s, relMsg, 'story');
+        if (!suppressToast) {
+          pushToast('📉 降格', `${toCat.name}へ落ちた`, 'rose');
+        }
+      }
+
       for (let i = s.categoryId + 1; i < CATEGORIES.length; i++) {
         const nextCat = CATEGORIES[i];
         let unlockedByAge = false;
@@ -5141,20 +5163,23 @@ export default function App() {
 
       // 限界年齢到達 または 衰えによる戦力限界による現役引退
       const postDecayRating = getTotalRating(newState);
-      const isDeclineRetired =
-        newState.age >= 36 &&
-        (newState.peakRatingReached || 0) > 15 &&
-        postDecayRating < newState.peakRatingReached * 0.62;
+      // 引退は「年齢」ではなく「どこも契約してくれなくなったとき」。
+      // 衰えて降格を続け、最下層でも通用しなくなったら現役生活が終わる。
+      // docs/GAME_DESIGN.md §18
+      const noContract =
+        newState.categoryId === 0 && postDecayRating < CONTRACT_FLOOR_RATING && newState.age >= 24;
+      // 安全弁。衰え緩和を積みきった場合でも無限には続かないようにする
+      const hardAgeLimit = newState.age >= 80;
 
-      if ((newState.age >= newState.maxRetireAge || isDeclineRetired) && !newState.isRetired) {
+      if ((noContract || hardAgeLimit) && !newState.isRetired) {
         newState.isRetired = true;
         newState.unlocks.reincarnateTab = true;
         checkGenomeAwakening(newState);
         const genNum = newState.totalGenerations || newState.generation;
         const finalCatName = CATEGORIES[newState.categoryId].name;
-        const retireReason = isDeclineRetired
-          ? `体力の限界と衰え（ピーク総合${formatNum(newState.peakRatingReached, 1)}→${formatNum(postDecayRating, 1)}）により`
-          : `限界寿命（${newState.maxRetireAge}歳）を迎え`;
+        const retireReason = noContract
+          ? `どのクラブからも契約の話が来なくなり（ピーク総合${formatNum(newState.peakRatingReached, 1)}→${formatNum(postDecayRating, 1)}）`
+          : `肉体の限界（${newState.age}歳）を迎え`;
         addLogMsg(
           newState,
           `【現役引退・輪廻の刻】${newState.age}歳で${retireReason}現役を引退。再び5歳の春へ意識が引き戻されていく――！`,
@@ -6616,6 +6641,89 @@ export default function App() {
     ? CHALLENGES_DEF.find((c) => c.id === gameState.activeChallenge)
     : null;
 
+  // 挑戦中の縛りチャレンジが、いま達成条件を満たしているか。
+  // ヘッダーに常時出す（以前はコードしか出ておらず、何が目標か分からなかった）
+  // --- トロフィー集計 ---
+  // 実績がタブごとに散っていて「どこまでコンプしたか」が分からなかったので、
+  // 殿堂タブに1枚の一覧として集約する。
+  const trophySections = [
+    {
+      key: 'ending',
+      label: 'エンディング',
+      icon: '📖',
+      done: gameState.unlockedEndings?.length || 0,
+      total: ENDINGS_DEF.length,
+      items: ENDINGS_DEF.map((d) => ({ name: d.name, got: gameState.unlockedEndings?.includes(d.id) }))
+    },
+    {
+      key: 'challenge',
+      label: '縛りチャレンジ',
+      icon: '⚔️',
+      done: gameState.completedChallenges?.length || 0,
+      total: CHALLENGES_DEF.length,
+      items: CHALLENGES_DEF.map((d) => ({ name: d.name, got: gameState.completedChallenges?.includes(d.id) }))
+    },
+    {
+      key: 'trial',
+      label: '神域試練',
+      icon: '🔥',
+      done: gameState.completedTrials?.length || 0,
+      total: ENDGAME_TRIALS_DEF.length,
+      items: ENDGAME_TRIALS_DEF.map((d) => ({ name: d.name, got: gameState.completedTrials?.includes(d.id) }))
+    },
+    {
+      key: 'fused',
+      label: '融合ゲノム',
+      icon: '🧬',
+      done: gameState.fusedGenomes?.length || 0,
+      total: FUSED_GENOME_DEF.length,
+      items: FUSED_GENOME_DEF.map((d) => ({ name: d.name, got: gameState.fusedGenomes?.includes(d.id) }))
+    },
+    {
+      key: 'secret',
+      label: '隠しゲノム',
+      icon: '🌑',
+      done: gameState.secretGenomes?.length || 0,
+      total: SECRET_GENOME_DEF.length,
+      items: SECRET_GENOME_DEF.map((d) => ({ name: d.name, got: gameState.secretGenomes?.includes(d.id) }))
+    },
+    {
+      key: 'charm',
+      label: '絆のお守り',
+      icon: '🏅',
+      done: gameState.unlockedCharms?.length || 0,
+      total: CHARMS_DEF.length,
+      items: CHARMS_DEF.map((d) => ({ name: d.name, got: gameState.unlockedCharms?.includes(d.id) }))
+    },
+    {
+      key: 'trait',
+      label: 'ハイブリッド特性',
+      icon: '⚡',
+      done: gameState.unlockedTraits?.length || 0,
+      total: POSITION_TRAITS_DEF.length,
+      items: POSITION_TRAITS_DEF.map((d) => ({ name: d.name, got: gameState.unlockedTraits?.includes(d.id) }))
+    },
+    {
+      key: 'path',
+      label: '進路ゲノム',
+      icon: '🧭',
+      done: BASE_GENOME_DEF.filter((d) => d.isPathGenome && (gameState.genomes?.[d.id] || 0) >= 5).length,
+      total: BASE_GENOME_DEF.filter((d) => d.isPathGenome).length,
+      items: BASE_GENOME_DEF.filter((d) => d.isPathGenome).map((d) => ({
+        name: d.name.replace(/^【.*?】/, ''),
+        got: (gameState.genomes?.[d.id] || 0) >= 5
+      }))
+    }
+  ];
+  const trophyDone = trophySections.reduce((a, b) => a + b.done, 0);
+  const trophyTotal = trophySections.reduce((a, b) => a + b.total, 0);
+  const trophyPct = trophyTotal > 0 ? Math.round((trophyDone / trophyTotal) * 100) : 0;
+
+  const activeChDone = Boolean(
+    activeChObj && !gameState.completedChallenges?.includes(activeChObj.id) && activeChObj.checkGoal(gameState)
+  );
+  const activeChCleared = Boolean(activeChObj && gameState.completedChallenges?.includes(activeChObj.id));
+
   const isEuroStage = gameState.categoryId >= 12;
   const activeEuroObj = EURO_COUNTRIES[gameState.euroCountry] || EURO_COUNTRIES.england;
   const activeTierObj = RIVAL_TIERS[gameState.rival?.tierIdx || 0] || RIVAL_TIERS[0];
@@ -6785,8 +6893,25 @@ export default function App() {
             </span>
           )}
           {activeChObj && (
-            <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 border bg-rose-950 border-rose-500 text-rose-200 shrink-0">
-              縛り:{activeChObj.code}
+            <span
+              title={`${activeChObj.name}
+${activeChObj.ruleText}
+${activeChObj.goalText}
+${activeChObj.rewardText}`}
+              className={`font-mono text-[9px] font-bold px-1.5 py-0.5 border shrink-0 max-w-[280px] truncate ${
+                activeChCleared
+                  ? 'bg-emerald-950 border-emerald-500 text-emerald-200'
+                  : activeChDone
+                    ? 'bg-amber-950 border-amber-400 text-amber-200'
+                    : 'bg-rose-950 border-rose-500 text-rose-200'
+              }`}
+            >
+              縛り:{activeChObj.code}{' '}
+              {activeChCleared
+                ? '✅ 制覇済'
+                : activeChDone
+                  ? '🎉 条件達成！'
+                  : (activeChObj.goalText || '').replace(/^目標：/, '')}
             </span>
           )}
           <span className="font-bold text-xs text-slate-100 truncate">{gameState.playerName}</span>
@@ -6835,9 +6960,9 @@ export default function App() {
           <button
             onClick={() => setTutorialModalOpen(true)}
             className="px-1.5 py-0.5 text-[9.5px] font-mono bg-indigo-950 border border-indigo-600 text-indigo-200 hover:text-white cursor-pointer"
-            title="v0.12 ガイドを表示"
+            title="v0.2 ガイドを表示"
           >
-            v0.12
+            v0.2
           </button>
           <button
             onClick={() => {
@@ -8873,6 +8998,57 @@ export default function App() {
               {/* ===== TAB 6: 殿堂 ＆ マルチエンディング図鑑 ===== */}
               {bottomTab === 'hall' && (
                 <div className="space-y-1.5">
+                  {/* ===== トロフィー一覧 ===== */}
+                  <div className="bg-gradient-to-r from-amber-950/40 to-slate-950 border border-amber-700/60 p-2 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-[11px] text-amber-200">🏆 トロフィー</span>
+                      <span className="font-mono text-[10px] text-amber-300">
+                        {trophyDone} / {trophyTotal}（{trophyPct}%）
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-slate-900 overflow-hidden">
+                      <div className="h-full bg-amber-400" style={{ width: `${trophyPct}%` }} />
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
+                      {trophySections.map((sec) => {
+                        const full = sec.done >= sec.total && sec.total > 0;
+                        return (
+                          <div
+                            key={sec.key}
+                            title={sec.items
+                              .map((it) => `${it.got ? '✅' : '・'} ${it.name}`)
+                              .join('\n')}
+                            className={`p-1.5 border text-[9px] ${
+                              full
+                                ? 'bg-amber-950/40 border-amber-500 text-amber-100'
+                                : 'bg-slate-950 border-slate-800 text-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="truncate">
+                                {sec.icon} {sec.label}
+                              </span>
+                              {full && <span className="text-[8px] shrink-0">👑</span>}
+                            </div>
+                            <div className="font-mono text-[11px] font-bold mt-0.5">
+                              {sec.done}
+                              <span className="text-[8.5px] font-normal text-slate-400">/{sec.total}</span>
+                            </div>
+                            <div className="w-full h-0.5 bg-slate-900 mt-1 overflow-hidden">
+                              <div
+                                className={full ? 'h-full bg-amber-400' : 'h-full bg-sky-500'}
+                                style={{ width: `${sec.total ? (sec.done / sec.total) * 100 : 0}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[8.5px] text-slate-500">
+                      各カードにカーソルを合わせると、何を取って何が残っているかが出る。
+                    </div>
+                  </div>
+
                   <div className="space-y-1">
                     <div className="text-[9px] font-bold text-amber-300">
                       📖 キャリア・マルチエンディング図鑑 ({gameState.unlockedEndings?.length || 0}/{ENDINGS_DEF.length})
