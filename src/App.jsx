@@ -3268,11 +3268,20 @@ export default function App() {
 
   // --- 獲得継承結晶の算出（100周目バランスへ調整） ---
   const calculateLegacyGain = useCallback((s) => {
-    const rating = getTotalRating(s);
-    const ageFactor = Math.max(1, (s.age - 4) / 16);
-    const catFactor = Math.pow(s.categoryId + 1, 1.3);
-    const matchFactor = (s.wins || 0) * 0.25 + (s.goals || 0) * 0.2 + (s.assists || 0) * 0.18;
-    const ratingFactor = Math.pow(rating, 0.5) * 0.8;
+    // 継承結晶は「その人生でどこまで到達したか」の対価にする。
+    //
+    // 以前は勝利数・ゴール数・年齢に比例していたため、
+    //   ・長く現役を続けるほど得（48〜63歳まで引っ張るのが最適解になっていた）
+    //   ・一方で中身の薄い周回を高速で回すのも得
+    // という、両極だけが得で中間が損な形になっていた（docs/BALANCE_LOG.md ⑩）。
+    //
+    // 到達度だけで決めれば、30歳以降は伸びないので粘る意味がなくなり、
+    // 「伸びなくなったら畳んで次へ」という早期引退のインセンティブが働く。
+    const peak = Math.max(s.peakRatingReached || 0, getTotalRating(s));
+    const catFactor = Math.pow(s.categoryId + 1, 1.6);
+    const peakFactor = Math.pow(peak, 0.55);
+    // 試合内容はごく小さい係数で残す（まったく無視すると無得点でも同額になる）
+    const matchFactor = Math.pow((s.goals || 0) + (s.assists || 0) * 0.6, 0.45) * 1.2;
 
     const g = s.genomes || {};
     const syns = getActiveSynergies(s);
@@ -3307,7 +3316,7 @@ export default function App() {
       intlCupMult *
       fanRank.crystalMult;
 
-    return Math.max(5, Math.floor((catFactor * 1.5 + matchFactor + ratingFactor) * ageFactor * totalMult));
+    return Math.max(5, Math.floor((catFactor * 2.2 + peakFactor + matchFactor) * totalMult));
   }, []);
 
   // --- 上位転生時に獲得できる聖杯数の算出 ---
@@ -4925,12 +4934,21 @@ export default function App() {
         }
       }
 
-      // 32歳以降のリアルな衰え期減衰処理
-      if (newState.age >= 32) {
+      // 30歳以降の衰え。
+      //
+      // 以前は「絶対値」で削っていたため（40歳で年2.9ポイント）、
+      // 能力が1000あっても年0.3%しか落ちず、60歳で銀河系リーグに
+      // 居座れてしまった。本人指摘「60歳とかで欧州銀河系とかはさすがにあり得ない」。
+      //
+      // 割合で削る形に変え、年齢の2乗で加速させる。
+      //   30歳 年3% / 35歳 年25% / 40歳 年60% / 45歳 年86% / 50歳 年97%
+      // 長く現役を続けたいなら、衰え緩和（ED5・CH5・ゲノム・隠しゲノム）を
+      // 積む必要がある、という設計にする。
+      if (newState.age >= 30) {
         if (newState.age >= 35) {
           newState.careerVeteranMonths = (newState.careerVeteranMonths || 0) + 1;
         }
-        const decayYears = newState.age - 31;
+        const decayYears = newState.age - 29;
         const secretCut = newState.secretGenomes?.includes('secret_veteran_iron') ? 0.5 : 1.0;
         const kingCut = Math.max(0.25, 1 - (g.king_eternal_dna || 0) * 0.1);
         const fusedKingCut = fused.includes('fused_eternal_king') ? 0.35 : 1.0;
@@ -4938,10 +4956,14 @@ export default function App() {
         const ch5Cut = newState.completedChallenges?.includes('ch_twilight_32') ? 0.55 : 1.0;
         const totalDecayMult = secretCut * kingCut * fusedKingCut * ed5Cut * ch5Cut;
 
-        const baseDecay = (0.045 + decayYears * 0.022) * totalDecayMult;
-        newState.stats.phy = Number(Math.max(1.0, newState.stats.phy - baseDecay).toFixed(2));
-        newState.stats.tec = Number(Math.max(1.0, newState.stats.tec - baseDecay * 0.42).toFixed(2));
-        newState.stats.sht = Number(Math.max(1.0, newState.stats.sht - baseDecay * 0.42).toFixed(2));
+        // 月あたりの減少率。年齢の2乗で効くので、歳を取るほど一気に落ちる
+        const monthlyRate = Math.min(0.5, (0.002 + decayYears * decayYears * 0.0006) * totalDecayMult);
+        const shrink = (v, mult) => Number(Math.max(1.0, v * (1 - monthlyRate * mult)).toFixed(3));
+        newState.stats.phy = shrink(newState.stats.phy, 1.0);
+        newState.stats.tec = shrink(newState.stats.tec, 0.42);
+        newState.stats.sht = shrink(newState.stats.sht, 0.42);
+        // 戦術眼は経験なので落ちにくいが、まったく落ちないわけでもない
+        newState.stats.iq = shrink(newState.stats.iq, 0.18);
         newState.maxStamina = Number(Math.max(15, newState.maxStamina - 0.18 * totalDecayMult).toFixed(2));
         if (newState.stamina > newState.maxStamina) {
           newState.stamina = newState.maxStamina;
