@@ -1951,7 +1951,7 @@ const ASCENSION_UPGRADES_DEF = [
     id: 'divine_cap_multiplier',
     name: '神域・才能器倍率',
     baseCost: 3,
-    growth: 1.85,
+    growth: 1.35,
     maxLv: 25,
     short: '全能力上限の乗算倍率 +16%/Lv',
     desc: 'すべての能力上限値に乗算ボーナスをかけ、桁違いの領域へ到達させる。'
@@ -2296,15 +2296,19 @@ const computeIndividualStatCaps = (
     achBonus +
     trialCapBonus;
 
+  // 段階ごとの能力上限の倍率。
+  // 本人の意図は「第三転生で完全無双」なので、1段階ごとに約2.8倍ずつ。
+  // 旧値（1.15 / 1.4 / 1.9 / 2.8）では第2転生のリターンが +15% しかなく、
+  // 9周かけて転生前の1.4倍にしかならなかった。
   const stageMult =
     ascensionCount >= 4
-      ? 2.8
+      ? 60
       : ascensionCount >= 3
-        ? 1.9
+        ? 20
         : ascensionCount >= 2
-          ? 1.4
+          ? 7.0
           : ascensionCount >= 1
-            ? 1.15
+            ? 2.5
             : 1.0;
   const divineMult = 1 + (ascensionUpgrades.divine_cap_multiplier || 0) * 0.16;
   const ch4Penalty = activeChallenge === 'ch_half_cap' ? 0.5 : 1.0;
@@ -3288,9 +3292,11 @@ export default function App() {
   // --- 上位転生時に獲得できる聖杯数の算出 ---
   const calculateAscensionGain = useCallback((s) => {
     const legLvSum = Object.values(s.legacyUpgrades || {}).reduce((a, b) => a + b, 0);
-    const catBonus = Math.max(0, (s.categoryId || 0) - 10) * 2;
-    const genBonus = Math.floor((s.totalGenerations || s.generation || 1) / 3);
-    return Math.max(1, Math.floor((legLvSum - 40) / 14) + catBonus + genBonus);
+    // 旧式は (legLvSum - 40) / 14 で、解放条件を Lv28 へ下げた後は
+    // 主要項が負になり、聖杯が5個しか出ていなかった（docs/BALANCE_LOG.md）。
+    const catBonus = Math.max(0, (s.categoryId || 0) - 8) * 4;
+    const genBonus = Math.floor((s.totalGenerations || s.generation || 1) / 2);
+    return Math.max(3, Math.floor(legLvSum / 2) + catBonus + genBonus);
   }, []);
 
   // --- ゲノム覚醒・進化・イベント・エンディング・試練チェック ---

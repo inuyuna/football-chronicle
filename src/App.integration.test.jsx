@@ -167,8 +167,9 @@ describe('引退とタイムリープ（周回が到達不能だった箇所の�
   it('22歳4月の強制タイムリープが発火し、第2周目を開始できる', async () => {
     await startNewCareer();
 
+    // advanceUntilRetirement は 'retired' / 'ascended' / false を返す
     const reached = await advanceUntilRetirement(230);
-    expect(reached, '引退イベントが発火しなかった').toBe(true);
+    expect(reached, '引退イベントが発火しなかった').toBe('retired');
 
     const atRetire = readSave();
     expect(atRetire.pendingModal.type).toBe('truck');
