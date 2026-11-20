@@ -1,0 +1,241 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Football Chronicle ロードマップ</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+  /* レイアウト: 縦のタイムライン。左に版、右に中身 */
+  :root {
+    --bg: #fbfbfa;
+    --surface: #ffffff;
+    --surface-2: #f5f5f1;
+    --ink: #1a1a19;
+    --ink-soft: #55554f;
+    --ink-faint: #8a8a81;
+    --rule: #e3e3dd;
+    --done: #059669;
+    --now: #2563eb;
+    --next: #ea580c;
+    --later: #8a8a81;
+    --font-display: 'Space Grotesk', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+    --font-body: 'Inter', 'Hiragino Sans', 'Yu Gothic', system-ui, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413; --surface: #1f1f1d; --surface-2: #26262300;
+      --ink: #f2f2ee; --ink-soft: #b4b4ab; --ink-faint: #7d7d74; --rule: #32322e;
+      --done: #1fae7a; --now: #4f8df5; --next: #e06c1c; --later: #7d7d74;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141413; --surface: #1f1f1d; --surface-2: #26262300;
+    --ink: #f2f2ee; --ink-soft: #b4b4ab; --ink-faint: #7d7d74; --rule: #32322e;
+    --done: #1fae7a; --now: #4f8df5; --next: #e06c1c; --later: #7d7d74;
+    color-scheme: dark;
+  }
+
+  body { background: var(--bg); color: var(--ink); font-family: var(--font-body); line-height: 1.65; }
+  .wrap {
+    max-width: 860px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 32px 64px;
+    display: flex; flex-direction: column; gap: 26px;
+  }
+  .eyebrow { font-size: .72rem; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-faint); font-weight: 600; margin: 0 0 4px; }
+  h1 { font-family: var(--font-display); font-size: clamp(1.5rem, 4vw, 2.05rem); font-weight: 700; letter-spacing: -.01em; margin: 0 0 8px; text-wrap: balance; }
+  header p { margin: 0; color: var(--ink-soft); max-width: 60ch; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .8rem; color: var(--ink-soft); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+  .tl { display: flex; flex-direction: column; gap: 18px; position: relative; }
+  .rel { display: grid; grid-template-columns: 112px 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 560px) { .rel { grid-template-columns: 1fr; gap: 8px; } }
+
+  .ver { position: sticky; top: env(safe-area-inset-top, 0px); }
+  .ver b { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; display: block; }
+  .ver .state { font-size: .7rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+  .ver .theme { font-size: .78rem; color: var(--ink-faint); margin-top: 2px; }
+
+  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 15px; }
+  .card.done { border-left: 3px solid var(--done); }
+  .card.now { border-left: 3px solid var(--now); }
+  .card.next { border-left: 3px solid var(--next); }
+  .card.later { border-left: 3px solid var(--later); }
+
+  ul.items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+  ul.items li { display: grid; grid-template-columns: 18px 1fr; gap: 9px; align-items: start; }
+  ul.items .mark { font-size: .82rem; line-height: 1.7; color: var(--ink-faint); }
+  ul.items .t { font-weight: 600; font-size: .93rem; }
+  ul.items .d { color: var(--ink-soft); font-size: .84rem; }
+  ul.items .q { color: var(--ink-faint); font-size: .8rem; font-style: italic; margin-top: 2px; }
+
+  .size { display: inline-block; font-size: .68rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: 1px; }
+  .size.s { background: color-mix(in srgb, var(--done) 16%, transparent); color: var(--done); }
+  .size.m { background: color-mix(in srgb, var(--now) 16%, transparent); color: var(--now); }
+  .size.l { background: color-mix(in srgb, var(--next) 16%, transparent); color: var(--next); }
+
+  .note { background: var(--surface-2); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 15px; }
+  .note h2 { font-family: var(--font-display); font-size: 1rem; margin: 0 0 8px; }
+  .note p { margin: 0 0 8px; color: var(--ink-soft); font-size: .88rem; }
+  .note p:last-child { margin-bottom: 0; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86em; background: color-mix(in srgb, var(--ink) 7%, transparent); padding: 1px 5px; border-radius: 4px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Football Chronicle · v0.2 時点</p>
+    <h1>ここから何を作るか</h1>
+    <p>プレイして出てきた指摘を、依存関係と規模で並べ直したもの。上から順に片付ける。各版のテーマは1つに絞ってある。</p>
+  </header>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--done)"></i>完了</span>
+    <span><i class="dot" style="background:var(--now)"></i>次にやる</span>
+    <span><i class="dot" style="background:var(--next)"></i>その次</span>
+    <span><i class="dot" style="background:var(--later)"></i>先の話</span>
+    <span style="margin-left:auto"><i class="size s">小</i><i class="size m">中</i><i class="size l">大</i></span>
+  </div>
+
+  <div class="tl">
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--done)">完了</span>
+        <b>v0.2</b>
+        <div class="theme">土台を直した</div>
+      </div>
+      <div class="card done">
+        <ul class="items">
+          <li><span class="mark">✓</span><div><span class="t">オフライン進行</span><div class="d">タブを閉じている間も時間が進む。進路選択や引退に当たったら止まる</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">引退を「契約がなくなったとき」に</span><div class="d">衰える→降格→最下層でも通用しない→引退。年齢による強制引退は廃止</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">継承結晶を到達度ベースに</span><div class="d">試合数・年齢への依存を外した。「長く粘る」も「すぐ畳む」も得しなくなった</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">トロフィー一覧（全68個 / 8カテゴリ）</span><div class="d">散らばっていた実績を殿堂タブに集約</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">数字表記</span><div class="d">小数点を廃止。1億2345万の形に。京・垓・𥝱まで</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">バグ修正</span><div class="d">技術練習が永久未解放 / 好感度が転生で引き継がれる / 実在人物名 / 12歳15歳の進路が出ない / 入手不能なお守り / 寿命強化が転生で消える</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--now)">次</span>
+        <b>v0.3</b>
+        <div class="theme">画面を読めるようにする</div>
+      </div>
+      <div class="card now">
+        <ul class="items">
+          <li><span class="mark">1</span><div><span class="t">要らない説明テキストを全部消す<i class="size s">小</i></span><div class="d">「全選択のMAX購入の対象」のような、人間が読む必要のない文言</div><div class="q">「変な説明テキストは全部チェックして消せ」</div></div></li>
+          <li><span class="mark">2</span><div><span class="t">意味不明な記述の除去<i class="size s">小</i></span><div class="d">「WG固定」など、何を指しているか分からない表示</div></div></li>
+          <li><span class="mark">3</span><div><span class="t">重要情報を一か所にまとめる<i class="size m">中</i></span><div class="d">いまのポジション / この人生での勝利数・ゴール数 / カテゴリ / チーム名</div></div></li>
+          <li><span class="mark">4</span><div><span class="t">未解放のタブを隠す<i class="size m">中</i></span><div class="d">解放のヒントは必要なときだけ出す</div></div></li>
+          <li><span class="mark">5</span><div><span class="t">名前まわり<i class="size s">小</i></span><div class="d">転生で名前が変えられてしまうのを止め、設定欄から変更する形に。地元クラブのネームエディットも</div></div></li>
+          <li><span class="mark">6</span><div><span class="t">子どもがすぐプロに上がるテキスト<i class="size s">小</i></span><div class="d">表示の辻褄を合わせる</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--next)">その次</span>
+        <b>v0.4</b>
+        <div class="theme">縛りチャレンジを機能させる</div>
+      </div>
+      <div class="card next">
+        <ul class="items">
+          <li><span class="mark">1</span><div><span class="t">全チャレンジに固有の減衰を設定<i class="size l">大</i></span><div class="d">強化は持ち込む。その上で成長量・能力上限・試合戦力に激しい減衰をかける。いまの強さでは届かず、通常周回に戻って積み直すことになる</div><div class="q">「凄まじい減衰が効くことでなかなかクリアできない（もっと周回して強化しなければいけない）という仕組み」</div></div></li>
+          <li><span class="mark">2</span><div><span class="t">減衰の種類をチャレンジごとに変える<i class="size m">中</i></span><div class="d">どの強化を積めば突破できるかが、チャレンジごとに違う形に</div></div></li>
+          <li><span class="mark">3</span><div><span class="t">段階制<i class="size m">中</i></span><div class="d">同じチャレンジを複数回クリアでき、回ごとに減衰と報酬が上がる</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--next)">その次</span>
+        <b>v0.5</b>
+        <div class="theme">操作を「連打」から「方針」へ</div>
+      </div>
+      <div class="card next">
+        <ul class="items">
+          <li><span class="mark">1</span><div><span class="t">練習を「同時に実行できる枠」モデルに<i class="size l">大</i></span><div class="d">クリックで回すのをやめ、何の練習を何枠ぶん回すかを決める形へ。強化の対象は「枠の数」になる</div><div class="q">「オートとなっている部分を同時に実行できる練習の数という感じで処理する」</div></div></li>
+          <li><span class="mark">2</span><div><span class="t">自動購入の対象を広げる<i class="size m">中</i></span><div class="d">永続ブレイクスルー・蒼空FC・シグネチャーブランド・スクール巡業・無制限投資。「他が買えないときだけ買う」設定も</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--later)">先</span>
+        <b>v0.6</b>
+        <div class="theme">集める理由を増やす</div>
+      </div>
+      <div class="card later">
+        <ul class="items">
+          <li><span class="mark">1</span><div><span class="t">進路ごとのタイトル 40〜50個<i class="size l">大</i></span><div class="d">高校サッカー選手権優勝、インターハイ制覇、大学選手権…。18進路それぞれに2〜3個。全進路の全タイトルでコンプ</div></div></li>
+          <li><span class="mark">2</span><div><span class="t">桁違いのゲノム<i class="size m">中</i></span><div class="d">通算1万勝・100万勝・1億ゴール。周回のインセンティブになる</div><div class="q">⚠️ 前線固定の圧力がかかるので、守備側・GKにも同格の目標を置いて釣り合わせる</div></div></li>
+          <li><span class="mark">3</span><div><span class="t">結婚相手を増やす<i class="size m">中</i></span><div class="d">数だけでは意味がないので、相手ごとのフレーバーテキストとセットで</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--later)">先</span>
+        <b>v0.7</b>
+        <div class="theme">経済と終盤の作業感</div>
+      </div>
+      <div class="card later">
+        <ul class="items">
+          <li><span class="mark">1</span><div><span class="t">戦術Pt経済を根本から見直す<i class="size l">大</i></span><div class="d">入手が1メニューに集中していて、そこを回さないと買えないものがある。選択の余地がない状態</div></div></li>
+          <li><span class="mark">2</span><div><span class="t">上位転生後の作業感を消す<i class="size l">大</i></span><div class="d">第2転生のあと、下位転生を延々と繰り返すだけの時間が長い</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--later)">先</span>
+        <b>v0.8</b>
+        <div class="theme">選手以外の軸</div>
+      </div>
+      <div class="card later">
+        <ul class="items">
+          <li><span class="mark">1</span><div><span class="t">寿命の二階建て<i class="size m">中</i></span><div class="d">選手寿命（〜40歳前後）と人間の寿命（〜70〜80歳）を分ける。延長アイテムは第3転生の聖杯で</div></div></li>
+          <li><span class="mark">2</span><div><span class="t">監督モード<i class="size l">大</i></span><div class="d">現役を終えたあとの軸。クラブ・代表の運営</div></div></li>
+          <li><span class="mark">3</span><div><span class="t">子ども育成とチームメイト強化<i class="size l">大</i></span><div class="d">自分以外を強くする方向。選手としての周回と並行して進む</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--later)">先</span>
+        <b>v1.0</b>
+        <div class="theme">サッカーの外へ</div>
+      </div>
+      <div class="card later">
+        <ul class="items">
+          <li><span class="mark">1</span><div><span class="t">他競技・他分野への横展開<i class="size l">大</i></span><div class="d">将棋棋士、タレント…。二刀流のプロフェッショナル。タイムリープで共有できる部分は共有し、新規に鍛える部分は鍛え直す</div><div class="q">「何せ無限にタイムリープできる人間だから。リプレイとかの転生小説ってそういう感じだからね」</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <h2>並行して進めるもの</h2>
+    <p><b>コードの分割。</b> <code>src/App.jsx</code> が約9,200行の単一ファイルで、データ定義・ゲームエンジン・UI が全部そこにある。機能追加のたびに事故る確率が上がるので、版の合間に少しずつ切り出す。順序は決めてあり、<code>docs/REFACTOR_PLAN.md</code> に Phase 1〜7 として書いてある。</p>
+    <p><b>バランスの実測。</b> <code>npm run measure</code> で20周ぶんを約3分でシミュレートできる。数値をいじるたびに回して、周回カーブが設計どおりか確認する。記録は <code>docs/BALANCE_LOG.md</code>。</p>
+    <p><b>回帰テスト。</b> いま47件。画面なしでゲームを22年ぶん自動プレイして、進路選択・引退・タイムリープ・オフライン進行が壊れていないかを見ている。壊れやすい所を直すたびに足す。</p>
+  </div>
+
+  <div class="note">
+    <h2>いちばん効く順に並べた理由</h2>
+    <p><b>v0.3 を先にするのは</b>、いま画面が読めない状態だから。何が起きているか分からないままバランスをいじっても、良くなったか判断できない。</p>
+    <p><b>v0.4（チャレンジ）と v0.5（練習の枠モデル）を分けたのは</b>、どちらも触る範囲が広く、同時にやると何が効いたか分からなくなるため。</p>
+    <p><b>v0.6 以降は追加</b>で、いま遊べている部分を壊さない。逆に v0.3〜v0.5 は既存の作りを変えるので、測定しながら進める。</p>
+  </div>
+</div>
