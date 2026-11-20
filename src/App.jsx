@@ -201,7 +201,7 @@ const EURO_COUNTRIES = {
     id: 'england',
     name: 'イングランド1部',
     leagueName: 'プレミア・トップリーグ',
-    rivalName: 'アーリング・ハーラン',
+    rivalName: 'オスカー・ブラッドリー',
     rivalRating: 1150,
     rivalQuote: '「フィジカルとゴール数で俺に勝てる奴はいない！」',
     defeatQuote: '「バケモノめ…！この俺がパワーでも決定力でも完敗するとは…！」',
@@ -211,7 +211,7 @@ const EURO_COUNTRIES = {
     id: 'spain',
     name: 'スペイン1部',
     leagueName: 'ラ・プリメーラ・リーグ',
-    rivalName: 'リオネル・メッシーナ',
+    rivalName: 'ハビエル・デルソル',
     rivalRating: 1220,
     rivalQuote: '「ボールを奪えるものなら奪ってみなよ。」',
     defeatQuote: '「信じられない…！俺のドリブルと戦術眼を完全に読み切るなんて…！」',
@@ -221,7 +221,7 @@ const EURO_COUNTRIES = {
     id: 'italy',
     name: 'イタリア1部',
     leagueName: 'セリエ・カルチョ1部',
-    rivalName: 'クリスティアーノ・ロナウドゥ',
+    rivalName: 'マッテオ・リヴァーニ',
     rivalRating: 1180,
     rivalQuote: '「勝利への執念も筋肉の仕上がりも、俺が世界一だ！」',
     defeatQuote: '「クソッ…！最後まで走り抜く執念で俺を上回るとは認めるしかないな…！」',
@@ -231,7 +231,7 @@ const EURO_COUNTRIES = {
     id: 'france',
     name: 'フランス1部',
     leagueName: 'リーグ・アン・エリート',
-    rivalName: 'キリアン・ムバペロ',
+    rivalName: 'リュカ・ドゥフォール',
     rivalRating: 1120,
     rivalQuote: '「俺のスピードに追いつけるDFは地球上に存在しない！」',
     defeatQuote: '「なっ…！？ 俺のトップスピードに余裕で追いついて抜き去っただと…！？」',
@@ -1139,7 +1139,7 @@ const BASE_GENOME_DEF = [
     maxLv: 999,
     archiveAtLv: 5,
     isPathGenome: true,
-    condition: '幼少期海外留学（バルサ/南米）ルートでの勝利',
+    condition: '幼少期海外留学（イベリア/南米）ルートでの勝利',
     effectDesc: (lv) => `全成長 +${Math.min(5, lv) * 3.5}% / 全上限 +${(Math.max(0, lv - 5) * 0.35).toFixed(2)}`,
     getStatVal: (s) => s.careerPathWins?.jr_abroad || 0,
     step: 6
@@ -1893,10 +1893,10 @@ const LEGACY_UPGRADES_DEF = [
   {
     id: 'iron_body',
     name: '鉄人の肉体遺伝子',
-    baseCost: 18,
-    growth: 1.75,
-    maxLv: 5,
-    short: '引退寿命 +0.5歳 & 初期体力 +8/Lv',
+    baseCost: 12,
+    growth: 1.5,
+    maxLv: 15,
+    short: '引退寿命 +2歳 & 初期体力 +8/Lv',
     desc: '怪我に強い強靭な肉体を手に入れ、現役寿命と初期最大体力を底上げする。'
   },
   {
@@ -2071,12 +2071,16 @@ const getCareerStageInfo = (age, maxRetireAge) => {
   if (age <= 11) return { label: 'キッズ期', isDecay: false, growthMult: 1.04 };
   if (age <= 17) return { label: 'ユース期', isDecay: false, growthMult: 1.16 };
   if (age <= 23) return { label: '若手飛躍期', isDecay: false, growthMult: 1.25 };
-  if (age <= 31) return { label: 'プロ黄金期', isDecay: false, growthMult: 1.1 };
-  const decayYears = age - 31;
+  if (age <= 29) return { label: '全盛期', isDecay: false, growthMult: 1.15 };
+  // 30歳以降は急激に鈍る。粘っても伸びないので、
+  // 早めに引退して次の周回へ行く方が得になる（早期引退のインセンティブ）。
+  // 現役を続けたいなら継承結晶で寿命を買う、という役割分担にする。
+  // docs/GAME_DESIGN.md §15-1
+  const decayYears = age - 29;
   return {
-    label: `衰え期(${decayYears}年目 / 限界${maxRetireAge}歳)`,
+    label: `伸び悩み期(${decayYears}年目 / 限界${maxRetireAge}歳)`,
     isDecay: true,
-    growthMult: Math.max(0.4, 1 - decayYears * 0.06)
+    growthMult: Math.max(0.12, 1 - decayYears * 0.2)
   };
 };
 
@@ -2761,7 +2765,12 @@ export default function App() {
       const initialMaxAuto = persistBt.smart_auto_all ? 5 : Math.min(5, 1 + memLv + Math.min(4, schedLv));
       const initialAutoActions = isNextGen || persistBt.smart_auto_all ? ALL_DRILL_IDS.slice(0, initialMaxAuto) : [];
 
+      // 鉄人の肉体遺伝子は継承結晶で買う「現役寿命」そのもの。
+      // 以前はここに入っておらず、購入時に maxRetireAge へ加算するだけだったため、
+      // 転生して createInitialState が走ると効果が消えていた。
+      const ironBodyLv = legacyUpgrades.iron_body || 0;
       const extraLifeBonus =
+        ironBodyLv * 2.0 +
         (secretGenomes.includes('secret_veteran_iron') ? 2 : 0) +
         (genomes.king_eternal_dna || 0) * 0.6 +
         (fusedGenomes.includes('fused_eternal_king') ? 2 : 0) +
@@ -2868,7 +2877,8 @@ export default function App() {
         age: startAge,
         month: 4,
         matchCounter: 0,
-        maxRetireAge: Math.round(33 + bodyLv * 0.5 + extraLifeBonus),
+        // 基礎は短く置く。現役年数は継承結晶で伸ばすもの、という設計。
+        maxRetireAge: Math.round(28 + bodyLv * 0.5 + extraLifeBonus),
         peakRatingReached: 0,
         isRetired: false,
         categoryId: startCat,
@@ -4171,6 +4181,15 @@ export default function App() {
           if (i >= 12 && !s.achievements.includes('overseas')) {
             s.achievements = [...s.achievements, 'overseas'];
           }
+          // 「世界制覇の記念メダル」は欧州CC強豪（cat13）到達で手に入る設定なのに、
+          // それを解放する処理がどこにも無く、永久に入手できなかった。
+          if (i >= 13 && !s.unlockedCharms.includes('charm_champion')) {
+            s.unlockedCharms = [...s.unlockedCharms, 'charm_champion'];
+            addLogMsg(s, '🏅【お守り獲得】「世界制覇の記念メダル」を手に入れた！', 'levelup');
+            if (!suppressToast) {
+              pushToast('🏅 お守り獲得', '「世界制覇の記念メダル」を手に入れた！', 'amber');
+            }
+          }
           const promoFlavor = `🔥【異例の昇格劇】「${s.age}歳で${nextCat.name}に昇格だと…！？ 歴史が動いたぞ！」周囲のスカウトや記者たちが騒然としている！（祝儀 +${formatYen(bonus)}）`;
           s.storyFlavor = promoFlavor;
           addLogMsg(s, promoFlavor, 'levelup');
@@ -4579,7 +4598,7 @@ export default function App() {
           return null;
         };
 
-        if (newState.age === 7 && newState.categoryId < 9 && !newState.triggeredEvents.includes('age7')) {
+        if (newState.age === 7 && !newState.triggeredEvents.includes('age7')) {
           newState.triggeredEvents = [...newState.triggeredEvents, 'age7'];
           const opts7 = [
             {
@@ -4609,8 +4628,8 @@ export default function App() {
             {
               id: 'jr_abroad',
               shortTitle: '幼少期海外留学',
-              clubTitle: 'バルサ・キッズカンテラ留学',
-              title: '幼少期海外キッズ留学（久保建英ルート）',
+              clubTitle: 'イベリア・キッズカンテラ',
+              title: '幼少期の海外キッズ留学',
               unlocked: !isFirstRun && rating >= 16 && newState.money >= 25000,
               reqText: isFirstRun ? '第1周目は不可（2周目以降・総合16 & 2.5万円）' : '必要条件: 総合力 16 & 資金 2.5万円',
               perkSummary: '全成長+3.5%/Lv・小学生から世界のカンテラで揉まれる',
@@ -4626,7 +4645,7 @@ export default function App() {
             opts7
           );
           if (res7) return res7;
-        } else if (newState.age === 12 && newState.categoryId < 9 && !newState.triggeredEvents.includes('age12')) {
+        } else if (newState.age === 12 && !newState.triggeredEvents.includes('age12')) {
           newState.triggeredEvents = [...newState.triggeredEvents, 'age12'];
           const opts12 = [
             {
@@ -4700,7 +4719,7 @@ export default function App() {
             opts12
           );
           if (res12) return res12;
-        } else if (newState.age === 15 && newState.categoryId < 9 && !newState.triggeredEvents.includes('age15')) {
+        } else if (newState.age === 15 && !newState.triggeredEvents.includes('age15')) {
           newState.triggeredEvents = [...newState.triggeredEvents, 'age15'];
           const opts15 = [
             {
@@ -4745,7 +4764,7 @@ export default function App() {
             opts15.push({
               id: 'spain_cantera',
               shortTitle: 'スペイン留学',
-              clubTitle: 'バルセロナ・ラ・カンテラ',
+              clubTitle: 'イベリア・ラ・カンテラ',
               title: '【3周目解禁】スペイン名門カンテラ留学',
               unlocked: rating >= 95 && newState.money >= 250000,
               reqText: '必要条件: 総合力 95 & 資金 25万円',
@@ -6076,7 +6095,7 @@ export default function App() {
           nextLegacyUpgrades,
           prev.breakthroughs
         ),
-        maxRetireAge: upg.id === 'iron_body' ? Math.round(prev.maxRetireAge + calc.count * 0.5) : prev.maxRetireAge,
+        maxRetireAge: upg.id === 'iron_body' ? Math.round(prev.maxRetireAge + calc.count * 2.0) : prev.maxRetireAge,
         maxAutoSlots: prev.breakthroughs?.smart_auto_all ? 5 : Math.min(5, 1 + memLv + Math.min(4, schedLv))
       };
       addLogMsg(next, `💎【継承強化】「${upg.name}」Lv.${calc.nextLv}を刻んだ！（+${calc.count}Lv）`, 'levelup');

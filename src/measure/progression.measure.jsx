@@ -71,12 +71,16 @@ const TARGET = {
 };
 
 // 継承結晶（毎周）で買う優先順
-const LEGACY_PRIORITY = [
-  '才能限界突破', // 全能力の成長上限 +2.0/Lv
-  'タイムリープの記憶', // 全練習効率 +11%/Lv
-  '明晰な戦術脳',
-  '鉄人の肉体遺伝子'
-];
+// 継承結晶（毎周）で買う優先順。MEASURE_ASC_STRATEGY と同じ名前で切り替わる。
+const LEGACY_STRATEGIES = {
+  // 能力上限を先に伸ばす
+  cap: ['才能限界突破', 'タイムリープの記憶', '明晰な戦術脳', '鉄人の肉体遺伝子'],
+  // 成長率を先に伸ばす
+  growth: ['タイムリープの記憶', '才能限界突破', '明晰な戦術脳', '鉄人の肉体遺伝子'],
+  // 現役年数を先に伸ばす（30歳以降の鈍化を、年数で押し切る戦略）
+  life: ['鉄人の肉体遺伝子', 'タイムリープの記憶', '才能限界突破', '明晰な戦術脳'],
+  harvest: ['明晰な戦術脳', 'タイムリープの記憶', '才能限界突破', '鉄人の肉体遺伝子']
+};
 
 // 聖杯（第2転生以降）で買う優先順。乗算で効くものから
 const ASC_STRATEGIES = {
@@ -85,10 +89,12 @@ const ASC_STRATEGIES = {
   // 成長率を先に伸ばす（上限だけ上げても33年で育てきれない、という仮説の検証用）
   growth: ['天賦の学習速度', '神域・才能器倍率', '輪廻結晶の錬成炉', '神速タイムフロー'],
   // 結晶の獲得量を先に伸ばす
-  harvest: ['輪廻結晶の錬成炉', '天賦の学習速度', '神域・才能器倍率', '神速タイムフロー']
+  harvest: ['輪廻結晶の錬成炉', '天賦の学習速度', '神域・才能器倍率', '神速タイムフロー'],
+  life: ['天賦の学習速度', '神域・才能器倍率', '輪廻結晶の錬成炉', '神速タイムフロー']
 };
 const ASC_STRATEGY = process.env.MEASURE_ASC_STRATEGY || 'cap';
 const ASCENSION_PRIORITY = ASC_STRATEGIES[ASC_STRATEGY] || ASC_STRATEGIES.cap;
+const LEGACY_PRIORITY = LEGACY_STRATEGIES[ASC_STRATEGY] || LEGACY_STRATEGIES.cap;
 
 const GENERATIONS = Number(process.env.MEASURE_GENERATIONS || 20);
 
