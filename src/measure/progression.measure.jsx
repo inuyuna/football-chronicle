@@ -12,6 +12,7 @@
 //   進路は「選べる最初の選択肢」を機械的に選ぶ。
 //   速度アップと自動化は買わない（強さに効くものだけを見る）。
 
+import { writeFileSync } from 'node:fs';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import {
@@ -78,12 +79,16 @@ const LEGACY_PRIORITY = [
 ];
 
 // 聖杯（第2転生以降）で買う優先順。乗算で効くものから
-const ASCENSION_PRIORITY = [
-  '神域・才能器倍率', // 能力上限に乗算
-  '天賦の学習速度', // 成長量に乗算
-  '輪廻結晶の錬成炉', // 結晶の獲得量を増幅
-  '神速タイムフロー'
-];
+const ASC_STRATEGIES = {
+  // 能力上限を先に伸ばす
+  cap: ['神域・才能器倍率', '天賦の学習速度', '輪廻結晶の錬成炉', '神速タイムフロー'],
+  // 成長率を先に伸ばす（上限だけ上げても33年で育てきれない、という仮説の検証用）
+  growth: ['天賦の学習速度', '神域・才能器倍率', '輪廻結晶の錬成炉', '神速タイムフロー'],
+  // 結晶の獲得量を先に伸ばす
+  harvest: ['輪廻結晶の錬成炉', '天賦の学習速度', '神域・才能器倍率', '神速タイムフロー']
+};
+const ASC_STRATEGY = process.env.MEASURE_ASC_STRATEGY || 'cap';
+const ASCENSION_PRIORITY = ASC_STRATEGIES[ASC_STRATEGY] || ASC_STRATEGIES.cap;
 
 const GENERATIONS = Number(process.env.MEASURE_GENERATIONS || 20);
 
@@ -176,6 +181,13 @@ describe('周回カーブの実測', () => {
       await doTimeLeap();
       await buyLegacyUpgrades(LEGACY_PRIORITY);
     }
+
+    // グラフ化できるように生データを残す
+    writeFileSync(
+      `measure-result-${ASC_STRATEGY}.json`,
+      JSON.stringify({ strategy: ASC_STRATEGY, generations: GENERATIONS, rows, ascensionEvents, totalMonths }, null, 2),
+      'utf8'
+    );
 
     /* eslint-disable no-console */
     console.log('\n===== 周回カーブ実測 =====');
