@@ -2189,7 +2189,11 @@ const computeIndividualStatCaps = (
   age = 18
 ) => {
   const isFirstGen = generation === 1 && ascensionCount === 0;
-  const baseCap = isFirstGen ? 6.2 : 7.0 + (generation - 1) * 1.1;
+  // 【実験】周回ごとの伸びを線形から指数へ。
+  // カテゴリの必要値が 58→82→125→195→310→500→850 と指数的に伸びるので、
+  // 線形の baseCap では永久に追いつけなかった（docs/GAME_DESIGN.md §7-1）。
+  const GEN_GROWTH = Number(process.env?.FC_GEN_GROWTH) || 1.7;
+  const baseCap = isFirstGen ? 6.2 : 7.0 * Math.pow(GEN_GROWTH, generation - 2);
   const breakerBonus = (legacyUpgrades.cap_breaker || 0) * 2.0;
   const underdogBonus = Math.min(5, genomes.underdog_hero_dna || 0) * 1.5;
   const euroSurvivalBonus = Math.min(5, genomes.euro_survival_dna || 0) * 2.0;
