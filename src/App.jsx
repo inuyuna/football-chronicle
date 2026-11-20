@@ -49,6 +49,11 @@ const CURRENT_TUTORIAL_VERSION = 12;
 // 追いつけなかった（12周してもカテゴリが1段も上がらない）。
 // 実測の根拠は docs/BALANCE_LOG.md。
 const GENERATION_CAP_GROWTH = 1.7;
+
+// オフライン進行で一度に進める最大ヶ月数。
+// 1ヶ月=1ティックなので、1倍速なら約12分ぶん。長く離れても
+// 1キャリア（約30年=360ヶ月）を大きく超えて飛ばさないための上限。
+const MAX_OFFLINE_MONTHS = 480;
 const ALL_DRILL_IDS = ['tech_drill', 'phy_drill', 'tactics_video', 'shoot_drill', 'mental_image'];
 
 // --- ポジション定義（全7種・転生時に選択） ---
@@ -1835,10 +1840,10 @@ const LEGACY_UPGRADES_DEF = [
   {
     id: 'cap_breaker',
     name: '才能限界突破',
-    baseCost: 10,
-    growth: 1.38,
+    baseCost: 20,
+    growth: 1.12,
     maxLv: 120,
-    short: '全能力の才能上限 +2.0/Lv',
+    short: '全能力の才能上限 +2/Lv（高Lvほど加速）',
     desc: '生まれ持った才能の器を押し広げ、全能力の成長上限を永続的に引き上げる。'
   },
   {
@@ -2203,7 +2208,11 @@ const computeIndividualStatCaps = (
 ) => {
   const isFirstGen = generation === 1 && ascensionCount === 0;
   const baseCap = isFirstGen ? 6.2 : 7.0 * Math.pow(GENERATION_CAP_GROWTH, generation - 2);
-  const breakerBonus = (legacyUpgrades.cap_breaker || 0) * 2.0;
+  // 才能限界突破は Lv が上がるほど1Lvの効き方が大きくなる（累進）。
+  // 線形 +2.0/Lv だと、コストが指数で伸びるのに効果が線形なので
+  // 必ずどこかで死ぬ。実測でも買う価値がなかった（docs/BALANCE_LOG.md ⑦⑧）。
+  const capBreakerLv = legacyUpgrades.cap_breaker || 0;
+  const breakerBonus = capBreakerLv * 2.0 + Math.pow(capBreakerLv, 1.7) * 0.5;
   const underdogBonus = Math.min(5, genomes.underdog_hero_dna || 0) * 1.5;
   const euroSurvivalBonus = Math.min(5, genomes.euro_survival_dna || 0) * 2.0;
   const worldAcad12Bonus = Math.min(5, genomes.world_acad_12_dna || 0) * 1.5;
@@ -2572,6 +2581,39 @@ const MiniBar = ({ label, current, max, colorClass, rateText }) => {
     </div>
   );
 };
+
+// 1ティック進めるための state の複製。
+// advanceOneMonth は渡された state を直接書き換えるので、
+// 書き換わるネストをここで浅くコピーしておく必要がある。
+// （根本的には docs/REFACTOR_PLAN.md Phase 4 でミューテーションを潰す）
+const cloneStateForTick = (prev) => ({
+          ...prev,
+          stats: { ...prev.stats },
+          statCaps: { ...prev.statCaps },
+          relations: { ...prev.relations },
+          life: { ...prev.life },
+          rival: { ...prev.rival },
+          mastery: { ...prev.mastery },
+          upgrades: { ...prev.upgrades },
+          unlocks: { ...prev.unlocks },
+          genomes: { ...prev.genomes },
+          breakthroughs: { ...prev.breakthroughs },
+          hobbies: { ...prev.hobbies },
+          brandProjects: { ...prev.brandProjects },
+          endlessInvest: { ...prev.endlessInvest },
+          clubMates: { ...prev.clubMates },
+          clubFacilities: { ...prev.clubFacilities },
+          protege: { ...prev.protege },
+          protegeBonds: { ...prev.protegeBonds },
+          partnerRecords: { ...prev.partnerRecords },
+          tacticalMastery: { ...prev.tacticalMastery },
+          euroMastery: { ...prev.euroMastery },
+          careerDrillCounts: { ...prev.careerDrillCounts },
+          careerPosMatches: { ...prev.careerPosMatches },
+          careerBodyWins: { ...prev.careerBodyWins },
+          careerPathWins: { ...prev.careerPathWins },
+          careerPathMatches: { ...prev.careerPathMatches }
+});
 
 export default function App() {
   // --- 初期ステート生成 ---
@@ -3203,11 +3245,70 @@ export default function App() {
   // triggeredEvents だけが立って進路選択が永久に失われる。
   useEffect(() => {
     try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(gameState));
+      // 最終プレイ時刻を一緒に残す。次に開いたときの経過分を進めるのに使う
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ ...gameState, lastPlayedAt: Date.now() }));
     } catch (e) {
       // ignore
     }
   }, [gameState]);
+
+  // --- オフライン進行（タブを閉じていた間も時間を進める） ---
+  //
+  // 放置ゲームなので、開いていない間も選手は育っているべき。
+  // 最終プレイ時刻からの経過を1ティック=1ヶ月に換算してまとめて進める。
+  // 進路選択や引退に当たったらそこで止める（勝手に選ばせない）。
+  const offlineDoneRef = useRef(false);
+  useEffect(() => {
+    if (offlineDoneRef.current) return;
+    offlineDoneRef.current = true;
+
+    const last = gameState.lastPlayedAt;
+    if (!last || typeof last !== 'number') return;
+
+    const elapsedMs = Date.now() - last;
+    if (elapsedMs < 60000) return; // 1分未満は無視（リロードなど）
+
+    const tickMs = Math.max(125, Math.floor(1000 / gameSpeed));
+    const ticks = Math.min(MAX_OFFLINE_MONTHS, Math.floor(elapsedMs / tickMs));
+    if (ticks <= 0) return;
+
+    setGameState((prev) => {
+      if (prev.isRetired || prev.pendingModal) return prev;
+      const cur = cloneStateForTick(prev);
+      let advanced = 0;
+      for (let i = 0; i < ticks; i++) {
+        if (cur.isRetired) break;
+        const requested = advanceOneMonth(cur, { suppressToast: true });
+        advanced += 1;
+        if (requested) {
+          cur.pendingModal = requested;
+          break;
+        }
+      }
+      cur.offlineReport = { months: advanced, elapsedMs, capped: ticks >= MAX_OFFLINE_MONTHS };
+      return cur;
+    });
+    // マウント時に一度だけ走らせる
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // オフライン進行の結果を知らせる
+  useEffect(() => {
+    const rep = gameState.offlineReport;
+    if (!rep || rep.months <= 0) return;
+    const hours = Math.floor(rep.elapsedMs / 3600000);
+    const mins = Math.floor((rep.elapsedMs % 3600000) / 60000);
+    const away = hours > 0 ? `${hours}時間${mins}分` : `${mins}分`;
+    pushToast(
+      '⏳ 離れている間も時間は進んだ',
+      `${away}ぶん（ゲーム内 ${rep.months}ヶ月）進行${rep.capped ? '（上限まで）' : ''}`,
+      'sky'
+    );
+    setGameState((prev) => ({ ...prev, offlineReport: null }));
+    // pushToast はこの位置より後で定義されるため依存配列に置けない（TDZ になる）。
+    // useCallback で安定しているので、コールバック内から参照するだけで足りる。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState.offlineReport]);
 
   const closeTutorialModal = () => {
     setTutorialModalOpen(false);
@@ -5102,34 +5203,7 @@ export default function App() {
         // useEffect が走るまでの1ティック分で次の月が進み、せっかく積んだ
         // pendingModal が上書きで消えることがある。
         if (prev.pendingModal) return prev;
-        const next = {
-          ...prev,
-          stats: { ...prev.stats },
-          statCaps: { ...prev.statCaps },
-          relations: { ...prev.relations },
-          life: { ...prev.life },
-          rival: { ...prev.rival },
-          mastery: { ...prev.mastery },
-          upgrades: { ...prev.upgrades },
-          unlocks: { ...prev.unlocks },
-          genomes: { ...prev.genomes },
-          breakthroughs: { ...prev.breakthroughs },
-          hobbies: { ...prev.hobbies },
-          brandProjects: { ...prev.brandProjects },
-          endlessInvest: { ...prev.endlessInvest },
-          clubMates: { ...prev.clubMates },
-          clubFacilities: { ...prev.clubFacilities },
-          protege: { ...prev.protege },
-          protegeBonds: { ...prev.protegeBonds },
-          partnerRecords: { ...prev.partnerRecords },
-          tacticalMastery: { ...prev.tacticalMastery },
-          euroMastery: { ...prev.euroMastery },
-          careerDrillCounts: { ...prev.careerDrillCounts },
-          careerPosMatches: { ...prev.careerPosMatches },
-          careerBodyWins: { ...prev.careerBodyWins },
-          careerPathWins: { ...prev.careerPathWins },
-          careerPathMatches: { ...prev.careerPathMatches }
-        };
+        const next = cloneStateForTick(prev);
         // advanceOneMonth の戻り値（進路選択・タイムリープ）は state に載せて運ぶ。
         // setGameState の updater は非同期に実行されるため、外側のローカル変数へ
         // 書いて直後に読む形では常に null になり、モーダルが永久に捨てられる。

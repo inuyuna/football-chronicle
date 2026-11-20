@@ -16,6 +16,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App.jsx';
 import {
+  SAVE_KEY,
   advanceMonths,
   advanceUntilRetirement,
   closeTutorialIfOpen,
@@ -213,5 +214,68 @@ describe('引退とタイムリープ（周回が到達不能だった箇所の�
 
     await advanceMonths(24);
     expect(readSave().pendingModal?.type).toBe('career');
+  });
+});
+
+describe('オフライン進行（放置ゲームの基本機能）', () => {
+  it('タブを閉じていた間も時間が進む', async () => {
+    await startNewCareer();
+    await advanceMonths(3);
+    const before = readSave();
+    const beforeMonths = before.age * 12 + before.month;
+
+    // 2時間前にプレイしていたことにして開き直す
+    cleanup();
+    const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ ...before, lastPlayedAt: twoHoursAgo }));
+
+    await act(async () => {
+      render(<App />);
+    });
+    await closeTutorialIfOpen();
+
+    const after = readSave();
+    expect(after.age * 12 + after.month).toBeGreaterThan(beforeMonths);
+  });
+
+  it('離れていた時間が短ければ進まない（リロード対策）', async () => {
+    await startNewCareer();
+    await advanceMonths(3);
+    const before = readSave();
+    const beforeMonths = before.age * 12 + before.month;
+
+    cleanup();
+    // 10秒前 = 1分未満なので無視される
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ ...before, lastPlayedAt: Date.now() - 10000 }));
+
+    await act(async () => {
+      render(<App />);
+    });
+    await closeTutorialIfOpen();
+
+    expect(readSave().age * 12 + readSave().month).toBe(beforeMonths);
+  });
+
+  it('進路選択に当たったらそこで止まる（勝手に選ばない）', async () => {
+    await startNewCareer();
+    const before = readSave();
+
+    // 7歳の進路（24ヶ月先）を大きく越える時間を空ける
+    cleanup();
+    localStorage.setItem(
+      SAVE_KEY,
+      JSON.stringify({ ...before, lastPlayedAt: Date.now() - 10 * 60 * 60 * 1000 })
+    );
+
+    await act(async () => {
+      render(<App />);
+    });
+    await closeTutorialIfOpen();
+
+    const after = readSave();
+    expect(after.pendingModal?.type).toBe('career');
+    // 7歳4月で止まっているはず
+    expect(after.age).toBe(7);
+    expect(after.month).toBe(4);
   });
 });
