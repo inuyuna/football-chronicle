@@ -30,6 +30,7 @@ import { formatYen, formatNum } from './lib/format.js';
 import { calcBulkPurchase, calcBulkSingleResource } from './lib/purchase.js';
 import { createSeed, nextRandom } from './lib/rng.js';
 import { overCapRatio } from './lib/growth.js';
+import { GENERATION_UNLOCKS, isFeatureUnlocked, newlyUnlocked } from './data/generationUnlocks.js';
 
 const SAVE_KEY = 'football_chronicle_v0_12_save';
 const LEGACY_SAVE_KEYS = [
@@ -2697,7 +2698,7 @@ export default function App() {
       completedChallenges = [],
       activeChallenge = null,
       tacticalStyle = 'balanced',
-      qolToggles = { autoGearBuy: true, autoSocialRun: true, autoCareerPath: false, hideCompleted: false },
+      qolToggles = { autoGearBuy: true, autoSocialRun: true, autoCareerPath: false, hideCompleted: false, pauseOnRebirth: true },
       preChallengeSnapshot = null
     ) => {
       const bodyLv = legacyUpgrades.iron_body || 0;
@@ -2769,6 +2770,8 @@ export default function App() {
       const initStamina = 18 + bodyLv * 8 + (initUpgrades.agility_gear || 0) * 4 + (retainedHobbies.cooking || 0) * 8;
       const initMental = 15 + mindLv * 8 + (retainedHobbies.golf || 0) * 6;
       const isNextGen = totalGens > 1 || generation > 1 || ascCount > 0;
+      // この周回で新しく解放された機能。開始時にモーダルで説明を出す
+      const freshUnlocks = newlyUnlocked(totalGens - 1, totalGens, ascCount);
       const persistBt = isBtBanned ? {} : { ...(inheritedBreakthroughs || {}) };
       const caps = computeIndividualStatCaps(
         generation,
@@ -2849,6 +2852,8 @@ export default function App() {
             : `【タイムリープ発動・5歳4月】頭脳と知識は大人だが、肉体はただの5歳児！成長期に合わせて再び世界の高みへ駆け上がろう！`;
 
       return {
+        pendingUnlocks: freshUnlocks.length > 0 ? freshUnlocks.map((u) => u.id) : null,
+        homeClubName: persistentPerks.homeClubName || '蒼空FC',
         generation,
         totalGenerations: totalGens,
         ascensionCount: ascCount,
@@ -2873,6 +2878,8 @@ export default function App() {
           autoGearBuy: qolToggles.autoGearBuy !== undefined ? Boolean(qolToggles.autoGearBuy) : true,
           autoSocialRun: qolToggles.autoSocialRun !== undefined ? Boolean(qolToggles.autoSocialRun) : true,
           autoCareerPath: Boolean(qolToggles.autoCareerPath),
+          // 転生した直後に時間を止めるか。止めれば落ち着いて方針を決められる
+          pauseOnRebirth: qolToggles.pauseOnRebirth !== undefined ? Boolean(qolToggles.pauseOnRebirth) : true,
           hideCompleted: Boolean(qolToggles.hideCompleted)
         },
         hallOfFame,
@@ -3195,6 +3202,7 @@ export default function App() {
 
   // UI状態
   const [gameSpeed, setGameSpeed] = useState(1);
+  const [isPaused, setIsPaused] = useState(false);
   const [bottomTab, setBottomTab] = useState('matches');
   const [investSubTab, setInvestSubTab] = useState('gear');
   const [genomeSubTab, setGenomeSubTab] = useState('active');
@@ -5210,6 +5218,7 @@ export default function App() {
   // --- メインゲームループ（2x / 4x / 8x対応） ---
   useEffect(() => {
     if (
+      isPaused ||
       gameState.isRetired ||
       careerChoiceModal ||
       truckEventModal ||
@@ -5223,6 +5232,8 @@ export default function App() {
     const timer = setInterval(() => {
       setGameState((prev) => {
         if (prev.isRetired) return prev;
+        // 新機能の解放モーダルを読んでいる間も止める
+        if (prev.pendingUnlocks) return prev;
         // モーダル待ちの間は時間を進めない。
         // 依存配列（careerChoiceModal 等）だけに頼ると、モーダルを開く
         // useEffect が走るまでの1ティック分で次の月が進み、せっかく積んだ
@@ -5241,6 +5252,7 @@ export default function App() {
 
     return () => clearInterval(timer);
   }, [
+    isPaused,
     gameSpeed,
     gameState.isRetired,
     careerChoiceModal,
@@ -5924,6 +5936,44 @@ export default function App() {
   };
 
   // --- マイ戦術スタイル切替 ---
+  // --- 出場ポジションの変更（キャリア中いつでも） ---
+  // 以前は転生時にしか選べなかったが、タイムリープでは名前もポジションも
+  // 変わらない方が自然なので、転生時の選択をやめて常時変更できるようにした。
+  const changePosition = (posId) => {
+    setGameState((prev) => {
+      if (!POSITIONS[posId] || prev.position === posId) return prev;
+      const next = {
+        ...prev,
+        position: posId,
+        statCaps: computeIndividualStatCaps(
+          prev.generation,
+          prev.legacyUpgrades,
+          prev.achievements,
+          posId,
+          prev.bodyType,
+          prev.genomes,
+          prev.fusedGenomes,
+          prev.secretGenomes,
+          prev.ascensionUpgrades,
+          prev.endlessInvest,
+          prev.posEventCaps,
+          prev.rivalPerkCaps,
+          prev.completedTrials,
+          prev.ascensionCount || 0,
+          prev.unlockedEndings,
+          prev.completedChallenges,
+          prev.activeChallenge,
+          prev.protegeBonds,
+          prev.age
+        )
+      };
+      const msg = `🔄【コンバート】${POSITIONS[posId].name}として出場することにした。`;
+      next.storyFlavor = msg;
+      addLogMsg(next, msg, 'story');
+      return next;
+    });
+  };
+
   const switchTacticalStyle = (styleId) => {
     if (!TACTICAL_STYLES[styleId]) return;
     setGameState((prev) => {
@@ -6330,6 +6380,11 @@ export default function App() {
 
   // --- 転生・新規開始確定（第二転生以降のタイムリープ趣旨リセット＆フレーバーテキスト強化！） ---
   const handleConfirmCreator = () => {
+    // 転生直後に時間を止めるか（設定で切り替えられる）
+    if (creatorModal.mode !== 'new' && gameState.qolToggles?.pauseOnRebirth !== false) {
+      setIsPaused(true);
+    }
+
     const profile = {
       playerName: creatorModal.playerName.trim() || '蒼井 翼',
       bodyType: creatorModal.bodyType,
@@ -6809,10 +6864,25 @@ export default function App() {
   ];
   const currentStageBadge = stageBadges[Math.min(4, ascCount)] || null;
 
-  const isNextGenUnlocked =
-    (gameState.totalGenerations || gameState.generation) >= 2 ||
-    ascCount >= 1 ||
-    gameState.achievements?.includes('jy_pass');
+  // 周回ごとに1つずつ解放する（docs/GAME_DESIGN.md §21）。
+  // 以前は2周目で全部まとめて開いていたため、何が増えたのか分からないまま
+  // 画面だけ複雑になっていた。
+  const totalGens = gameState.totalGenerations || gameState.generation || 1;
+  const canUse = (id) => isFeatureUnlocked(id, totalGens, ascCount);
+  // この周回で新しく解放された機能（解放モーダル用）
+  const unlockModalItems = (gameState.pendingUnlocks || [])
+    .map((id) => GENERATION_UNLOCKS.find((u) => u.id === id))
+    .filter(Boolean);
+
+  const canGear = canUse('gear');
+  const canProtege = canUse('protege');
+  const canCharm = canUse('charm');
+  const canTrait = canUse('trait');
+  const canHobby = canUse('hobby');
+  const canRivalCoop = canUse('rival_coop');
+  const canBrand = canUse('brand');
+  // 旧名。段階的に個別フラグへ置き換えていく
+  const isNextGenUnlocked = canGear;
   const isGearDisabledByCh = gameState.activeChallenge === 'ch_no_gear' || gameState.activeChallenge === 'ch_ascetic_god';
   const isBtDisabledByCh = gameState.activeChallenge === 'ch_no_memory' || gameState.activeChallenge === 'ch_ascetic_god';
   const isSocialDisabledByCh =
@@ -6915,13 +6985,24 @@ ${activeChObj.rewardText}`}
             </span>
           )}
           <span className="font-bold text-xs text-slate-100 truncate">{gameState.playerName}</span>
-          <span className="text-[10px] font-mono text-sky-300 shrink-0">[{gameState.position}固定]</span>
+          <span className="text-[10px] font-mono text-sky-300 shrink-0">[{gameState.position}]</span>
           <span className={`hidden sm:inline font-mono text-[8.5px] font-bold px-1.5 py-0.2 border shrink-0 ${unrivaledRank.badge}`}>
             🌟 {unrivaledRank.title}
           </span>
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setIsPaused((v) => !v)}
+            title={isPaused ? '時間を進める' : '時間を止める'}
+            className={`px-1.5 py-0.5 text-[10px] font-mono border cursor-pointer ${
+              isPaused
+                ? 'bg-amber-900 border-amber-400 text-white font-bold'
+                : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            {isPaused ? '▶' : '⏸'}
+          </button>
           {[
             { spd: 1, unlocked: true, tip: '1倍速' },
             { spd: 2, unlocked: isSpeed2Unlocked, tip: 'タイムリープ結晶で「倍速思考(2x)」を購入して解放' },
@@ -7339,7 +7420,11 @@ ${activeChObj.rewardText}`}
             <div className="shrink-0 flex border-b border-slate-800 bg-slate-950 text-[10px] font-bold overflow-x-auto">
               {[
                 { id: 'matches', label: '⚽ 試合・戦術' },
-                { id: 'social', label: '🤝 交流・師弟・お守り' },
+                {
+                  id: 'social',
+                  // 未解放の機能名はタブに出さない（docs/GAME_DESIGN.md §21）
+                  label: `🤝 交流${canProtege ? '・師弟' : ''}${canCharm ? '・お守り' : ''}`
+                },
                 { id: 'upgrades', label: '🛒 道具・投資・蒼空FC', show: gameState.unlocks.upgradesTab },
                 { id: 'genomes', label: `🧬 ゲノム(${totalGenomeCount})`, show: totalGenomeCount > 0 },
                 {
@@ -7423,11 +7508,40 @@ ${activeChObj.rewardText}`}
                     </div>
                   </div>
 
+                  {/* 出場ポジション（いつでも変更できる） */}
+                  <div className="bg-slate-950 border border-slate-800 p-1.5 space-y-1">
+                    <div className="flex items-center justify-between gap-1 text-[9px]">
+                      <span className="font-bold text-sky-300">🔄 出場ポジション</span>
+                      <span className="text-slate-500 text-[8.5px]">50試合でそのPOSの特性を永続習得</span>
+                    </div>
+                    <div className="grid grid-cols-4 sm:grid-cols-7 gap-1">
+                      {Object.values(POSITIONS).map((p) => {
+                        const active = gameState.position === p.id;
+                        const played = gameState.careerPosMatches?.[p.id] || 0;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => changePosition(p.id)}
+                            title={p.name}
+                            className={`p-1 border text-center ${
+                              active
+                                ? 'bg-sky-900 border-sky-400 text-white font-bold'
+                                : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200 cursor-pointer'
+                            }`}
+                          >
+                            <div className="text-[10px] font-bold">{p.id}</div>
+                            <div className="text-[8px] font-mono opacity-80">{played}試合</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* マイ戦術スタイル（戦術熟練Lvが輪廻後も永続継承！） */}
                   <div className="bg-slate-950 border border-indigo-900/70 p-1.5 space-y-1">
                     <div className="flex items-center justify-between text-[9px]">
                       <span className="font-bold text-indigo-300 flex items-center gap-1">
-                        <Compass size={10} /> マイ戦術スタイル（練習で戦術熟練UP・転生後も永続継承！）
+                        <Compass size={10} /> マイ戦術スタイル
                       </span>
                       <span className="text-[8px] font-mono text-slate-400">
                         現在: {TACTICAL_STYLES[gameState.tacticalStyle]?.name}
@@ -7542,7 +7656,7 @@ ${activeChObj.rewardText}`}
               {/* ===== TAB 2: 交流・師弟・恋愛（既婚後は恋愛欄非表示！）・子ども情報・お守り ===== */}
               {bottomTab === 'social' && (
                 <div className="space-y-1.5">
-                  {isNextGenUnlocked && (
+                  {canProtege && (
                     <div className="bg-sky-950/30 border border-sky-700/80 p-1.5 space-y-1">
                       <div className="flex flex-wrap items-center justify-between gap-1">
                         <span className="text-[9px] font-bold text-sky-300 flex items-center gap-1">
@@ -7737,10 +7851,11 @@ ${activeChObj.rewardText}`}
                   </div>
 
                   {/* ハイブリッド特性スロット */}
+                  {canTrait && (
                   <div className="space-y-1 pt-1 border-t border-slate-800">
                     <div className="flex items-center justify-between text-[9px]">
                       <span className="font-bold text-emerald-300">
-                        🎭 ハイブリッド特性（各POS 50試合で永久習得 / 同時装備:{gameState.equippedTraits?.length || 0}/{gameState.maxTraitSlots || 2}枠）
+                        🎭 ハイブリッド特性（装備:{gameState.equippedTraits?.length || 0}/{gameState.maxTraitSlots || 2}枠）
                       </span>
                       <span className="font-mono text-slate-400">
                         習得済:{gameState.unlockedTraits?.length || 0}/7
@@ -7776,8 +7891,10 @@ ${activeChObj.rewardText}`}
                       })}
                     </div>
                   </div>
+                  )}
 
                   {/* 絆のお守り */}
+                  {canCharm && (
                   <div className="space-y-1 pt-1 border-t border-slate-800">
                     <div className="flex items-center justify-between text-[9px]">
                       <span className="font-bold text-amber-300">
@@ -7817,6 +7934,7 @@ ${activeChObj.rewardText}`}
                       })}
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
@@ -7845,7 +7963,7 @@ ${activeChObj.rewardText}`}
                       >
                         ⚡ 永続ブレイクスルー
                       </button>
-                      {isNextGenUnlocked && (
+                      {canHobby && (
                         <button
                           onClick={() => setInvestSubTab('club_hobby')}
                           className={`px-2 py-0.5 border font-bold cursor-pointer ${
@@ -7969,10 +8087,10 @@ ${activeChObj.rewardText}`}
                         })}
                       </div>
 
-                      {isNextGenUnlocked && (
+                      {canGear && (
                         <div className="bg-slate-950 border border-slate-800 p-1.5 space-y-1">
                           <div className="text-[9px] font-bold text-slate-300">
-                            🏛️ 青空FC財団・無制限投資（全選択のMAX購入対応）
+                            🏛️ 無制限投資
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-1">
                             {[
@@ -8085,13 +8203,13 @@ ${activeChObj.rewardText}`}
                     </div>
                   )}
 
-                  {investSubTab === 'club_hobby' && isNextGenUnlocked && (
+                  {investSubTab === 'club_hobby' && canHobby && (
                     <div className="space-y-1.5">
                       {gameState.categoryId >= 12 ? (
                       <div className="bg-emerald-950/25 border border-emerald-700/80 p-1.5 space-y-1">
                         <div className="flex flex-wrap items-center justify-between gap-1">
                           <span className="font-bold text-[9.5px] text-emerald-300 flex items-center gap-1">
-                            <Shield size={11} /> 地元クラブ「蒼空FC」運営（同僚Lv3で連携共鳴）
+                            <Shield size={11} /> 地元クラブ「{gameState.homeClubName || '蒼空FC'}」運営（同僚Lv3で連携共鳴）
                           </span>
                           {(() => {
                             const cLv = gameState.localClubLv || 1;
@@ -8232,7 +8350,7 @@ ${activeChObj.rewardText}`}
                       <div className="bg-slate-950 border border-slate-800 p-1.5 space-y-1">
                         <div className="flex flex-wrap items-center justify-between gap-1 text-[9px]">
                           <span className="font-bold text-amber-300">
-                            🧠 頭の中の永続知識・趣味（タイムリープ後もレベル永続保持！）
+                            🧠 頭の中の知識・趣味
                           </span>
                           <div className="flex items-center gap-1">
                             {(() => {
@@ -9161,6 +9279,41 @@ ${activeChObj.rewardText}`}
       )}
 
       {/* ================= モーダル⓪：初回＆アップデート時チュートリアル確認モーダル ================= */}
+      {/* ================= モーダル：周回で新しく解放された機能 ================= */}
+      {unlockModalItems.length > 0 && !creatorModal.open && (
+        <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-2">
+          <div className="bg-slate-900 border border-sky-500 max-w-lg w-full p-3.5 space-y-3 text-xs max-h-[85vh] overflow-y-auto">
+            <div className="border-b border-slate-800 pb-1.5">
+              <div className="font-bold text-sm text-sky-300">
+                🔓 第{gameState.totalGenerations || gameState.generation}周目・新しくできるようになったこと
+              </div>
+              <div className="text-[10px] text-slate-400">
+                前の人生で得た知識が、ようやく形になった
+              </div>
+            </div>
+
+            {unlockModalItems.map((u) => (
+              <div key={u.id} className="space-y-1.5">
+                <div className="font-bold text-[13px] text-sky-200">
+                  {u.icon} {u.name}
+                </div>
+                <div className="text-[10px] text-emerald-300">{u.summary}</div>
+                <div className="text-[11px] text-slate-200 leading-relaxed whitespace-pre-line bg-slate-950/70 border border-slate-800 p-2">
+                  {u.flavor}
+                </div>
+              </div>
+            ))}
+
+            <button
+              onClick={() => setGameState((prev) => ({ ...prev, pendingUnlocks: null }))}
+              className="w-full py-2 bg-sky-700 hover:bg-sky-600 border border-sky-300 text-white font-bold text-xs cursor-pointer"
+            >
+              わかった
+            </button>
+          </div>
+        </div>
+      )}
+
       {tutorialModalOpen && !creatorModal.open && (
         <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-2">
           <div className="bg-slate-900 border border-amber-400 max-w-md w-full p-3.5 space-y-2.5 text-xs">
@@ -9239,16 +9392,25 @@ ${activeChObj.rewardText}`}
               </div>
             )}
 
-            <div className="space-y-1">
-              <label className="text-[10px] text-slate-400 block">選手名</label>
-              <input
-                type="text"
-                maxLength={14}
-                value={creatorModal.playerName}
-                onChange={(e) => setCreatorModal((prev) => ({ ...prev, playerName: e.target.value }))}
-                className="w-full bg-slate-950 border border-slate-700 px-2 py-1 text-slate-100 text-xs focus:outline-none focus:border-sky-400"
-              />
-            </div>
+            {creatorModal.mode === 'new' ? (
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 block">選手名</label>
+                <input
+                  type="text"
+                  maxLength={14}
+                  value={creatorModal.playerName}
+                  onChange={(e) => setCreatorModal((prev) => ({ ...prev, playerName: e.target.value }))}
+                  className="w-full bg-slate-950 border border-slate-700 px-2 py-1 text-slate-100 text-xs focus:outline-none focus:border-sky-400"
+                />
+              </div>
+            ) : (
+              // タイムリープは同一人物が5歳に戻るだけなので、名前は変わらない。
+              // 変えたいときは「システム・セーブ管理」から。
+              <div className="bg-slate-950 border border-slate-800 p-1.5 text-[10px] text-slate-400">
+                選手名 <strong className="text-slate-100 text-[11px]">{creatorModal.playerName}</strong>
+                <span className="ml-1 text-[9px]">（同じ人生をやり直すので変わらない。変更はシステム設定から）</span>
+              </div>
+            )}
 
             <div className="space-y-1">
               <label className="text-[10px] text-slate-400 block">体格タイプ（体格ごとに固有ゲノム＆共鳴コンボあり）</label>
@@ -9271,9 +9433,9 @@ ${activeChObj.rewardText}`}
               </div>
             </div>
 
-            <div className="space-y-1">
+            <div className={`space-y-1 ${creatorModal.mode === 'new' ? '' : 'hidden'}`}>
               <label className="text-[10px] text-slate-400 block">
-                今世の出場ポジション（キャリア中は変更不可・50試合出場で特性永続習得）
+                出場ポジション（キャリア中はいつでも変更できる・50試合出場で特性永続習得）
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
                 {Object.values(POSITIONS).map((p) => (
@@ -9371,6 +9533,57 @@ ${activeChObj.rewardText}`}
                 ✕
               </button>
             </div>
+            <div className="bg-slate-950 border border-slate-800 p-2 space-y-2">
+              <div className="font-bold text-[11px] text-sky-300">⚙️ 設定</div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] text-slate-400 block" htmlFor="setting-player-name">
+                  選手名（タイムリープしても変わらない。ここでだけ変更できる）
+                </label>
+                <input
+                  id="setting-player-name"
+                  type="text"
+                  maxLength={14}
+                  value={gameState.playerName}
+                  onChange={(e) =>
+                    setGameState((prev) => ({ ...prev, playerName: e.target.value.slice(0, 14) }))
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100 text-[11px] focus:outline-none focus:border-sky-400"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[9px] text-slate-400 block" htmlFor="setting-home-club">
+                  地元クラブの名前（お気に入りのクラブ名を付けられる）
+                </label>
+                <input
+                  id="setting-home-club"
+                  type="text"
+                  maxLength={16}
+                  value={gameState.homeClubName || '蒼空FC'}
+                  onChange={(e) =>
+                    setGameState((prev) => ({ ...prev, homeClubName: e.target.value.slice(0, 16) }))
+                  }
+                  className="w-full bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100 text-[11px] focus:outline-none focus:border-sky-400"
+                />
+              </div>
+
+              <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={gameState.qolToggles?.pauseOnRebirth !== false}
+                  onChange={(e) =>
+                    setGameState((prev) => ({
+                      ...prev,
+                      qolToggles: { ...prev.qolToggles, pauseOnRebirth: e.target.checked }
+                    }))
+                  }
+                  className="accent-sky-400"
+                />
+                転生した直後に時間を止める（方針を決めてから再開できる）
+              </label>
+            </div>
+
             <p>
               <strong className="text-sky-300">1. タイムリープの原理原則（知識の永続継承）：</strong>
               タイムリープすると肉体・年齢・今世の人間関係・メディア出演歴はリセットされますが、頭の中の知識（趣味知識・戦術熟練・未来予知競馬記憶・遺伝子・習慣熟練）はすべて次の輪廻へ引き継がれます。

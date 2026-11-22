@@ -39,6 +39,32 @@ export async function passModalGuard() {
   });
 }
 
+/**
+ * 転生直後に時間が止まっていたら再開する。
+ * qolToggles.pauseOnRebirth が既定で有効なため、転生後は停止状態になる。
+ */
+export async function resumeIfPaused() {
+  const btn = screen.queryByRole('button', { name: '▶' });
+  if (btn) {
+    await act(async () => {
+      btn.click();
+    });
+  }
+}
+
+/**
+ * 周回で新機能が解放されたときのモーダルを閉じる。
+ * 開いている間はゲームループが止まる（docs/GAME_DESIGN.md §21）
+ */
+export async function closeUnlockModalIfOpen() {
+  const btn = screen.queryByRole('button', { name: /^わかった$/ });
+  if (btn) {
+    await act(async () => {
+      btn.click();
+    });
+  }
+}
+
 /** チュートリアルが出ていれば閉じる。開いている間はゲームループが止まる */
 export async function closeTutorialIfOpen() {
   const tutorial = screen.queryByRole('button', { name: /理解してプレイ開始/ });
@@ -62,6 +88,8 @@ export async function startNewCareer() {
   });
 
   await closeTutorialIfOpen();
+  await closeUnlockModalIfOpen();
+  await resumeIfPaused();
 }
 
 /**
@@ -125,6 +153,8 @@ export async function doTimeLeap() {
     screen.getByRole('button', { name: /キャリアを開始する/ }).click();
   });
   await closeTutorialIfOpen();
+  await closeUnlockModalIfOpen();
+  await resumeIfPaused();
 }
 
 /**
@@ -249,6 +279,8 @@ export async function tryAscension() {
     startBtn.click();
   });
   await closeTutorialIfOpen();
+  await closeUnlockModalIfOpen();
+  await resumeIfPaused();
   return { ok: true, reason: '' };
 }
 

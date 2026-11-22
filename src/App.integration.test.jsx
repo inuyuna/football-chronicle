@@ -18,6 +18,8 @@ import App from './App.jsx';
 import {
   SAVE_KEY,
   advanceMonths,
+  closeUnlockModalIfOpen,
+  resumeIfPaused,
   advanceUntilRetirement,
   closeTutorialIfOpen,
   passModalGuard,
@@ -101,6 +103,8 @@ describe('進路選択（過去にまったく発火しなかった箇所の回�
       render(<App />);
     });
     await closeTutorialIfOpen();
+    await closeUnlockModalIfOpen();
+    await resumeIfPaused();
 
     expect(screen.getByText(/7歳・小学校入学/)).toBeTruthy();
   });
@@ -187,6 +191,8 @@ describe('引退とタイムリープ（周回が到達不能だった箇所の�
       screen.getByRole('button', { name: /キャリアを開始する/ }).click();
     });
     await closeTutorialIfOpen();
+    await closeUnlockModalIfOpen();
+    await resumeIfPaused();
 
     const next = readSave();
     expect(next.generation).toBe(2);
@@ -211,6 +217,8 @@ describe('引退とタイムリープ（周回が到達不能だった箇所の�
       screen.getByRole('button', { name: /キャリアを開始する/ }).click();
     });
     await closeTutorialIfOpen();
+    await closeUnlockModalIfOpen();
+    await resumeIfPaused();
 
     await advanceMonths(24);
     expect(readSave().pendingModal?.type).toBe('career');
@@ -233,6 +241,8 @@ describe('オフライン進行（放置ゲームの基本機能）', () => {
       render(<App />);
     });
     await closeTutorialIfOpen();
+    await closeUnlockModalIfOpen();
+    await resumeIfPaused();
 
     const after = readSave();
     expect(after.age * 12 + after.month).toBeGreaterThan(beforeMonths);
@@ -252,6 +262,8 @@ describe('オフライン進行（放置ゲームの基本機能）', () => {
       render(<App />);
     });
     await closeTutorialIfOpen();
+    await closeUnlockModalIfOpen();
+    await resumeIfPaused();
 
     expect(readSave().age * 12 + readSave().month).toBe(beforeMonths);
   });
@@ -271,6 +283,8 @@ describe('オフライン進行（放置ゲームの基本機能）', () => {
       render(<App />);
     });
     await closeTutorialIfOpen();
+    await closeUnlockModalIfOpen();
+    await resumeIfPaused();
 
     const after = readSave();
     expect(after.pendingModal?.type).toBe('career');
