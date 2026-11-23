@@ -29,7 +29,15 @@ import {
 import { formatYen, formatNum } from './lib/format.js';
 import { calcBulkPurchase, calcBulkSingleResource } from './lib/purchase.js';
 import { createSeed, nextRandom } from './lib/rng.js';
-import { overCapRatio } from './lib/growth.js';
+import { overCapDiminishing, overCapRatio } from './lib/growth.js';
+import { GROWTH_SOFTCAP, POWER_SOFTCAP, softcap } from './lib/softcap.js';
+import {
+  AFFECTION_MARRY,
+  AFFECTION_MAX,
+  AFFECTION_PER_DATE,
+  ROMANCE_FLAVOR,
+  reachedMilestone
+} from './data/romanceEvents.js';
 import { GENERATION_UNLOCKS, isFeatureUnlocked, newlyUnlocked } from './data/generationUnlocks.js';
 
 const SAVE_KEY = 'football_chronicle_v0_12_save';
@@ -2332,7 +2340,32 @@ const computeIndividualStatCaps = (
             : 1.0;
   const divineMult = 1 + (ascensionUpgrades.divine_cap_multiplier || 0) * 0.16;
   const ch4Penalty = activeChallenge === 'ch_half_cap' ? 0.5 : 1.0;
-  const pool = rawPool * stageMult * divineMult * ch4Penalty;
+
+  // 30歳以降は「才能の器」そのものが縮む。
+  //
+  // 以前は能力値だけを毎月わずかに削っていたので、AUTO練習がその削りを
+  // 即座に取り返してしまい、58歳・63歳・80歳まで現役が続いていた（実測）。
+  // 本人指摘（2026-11-23）:
+  //   「2週目時点で、もろもろの自動強化が加齢の能力低下を上回り、
+  //     80歳までプレーできてしまった。身体能力は加齢するほど加速度的に低下するようにしろ」
+  //
+  // 上限そのものを落とせば、練習しても上限超過の逓減（overCapDiminishing）が
+  // 効いて伸びなくなる。衰えを「取り返せないもの」にするのが狙い。
+  //   35歳 ×0.41 / 40歳 ×0.15 / 45歳 ×0.05
+  // 衰え緩和（隠しゲノム・king_eternal・融合・ED5・CH5）を全部積むと
+  // 指数の肩が 0.12 まで緩み、50歳でも ×0.60 を保てる。
+  const decaySoften = Math.max(
+    0.12,
+    (secretGenomes.includes('secret_veteran_iron') ? 0.6 : 1.0) *
+      Math.max(0.3, 1 - (genomes.king_eternal_dna || 0) * 0.1) *
+      (fusedGenomes.includes('fused_eternal_king') ? 0.45 : 1.0) *
+      (unlockedEndings.includes('ed_eternal_50') ? 0.75 : 1.0) *
+      (completedChallenges.includes('ch_twilight_32') ? 0.6 : 1.0)
+  );
+  const ageCapMult =
+    age <= 29 ? 1.0 : Math.max(0.006, Math.pow(0.91, Math.pow(age - 29, 1.25) * decaySoften));
+
+  const pool = rawPool * stageMult * divineMult * ch4Penalty * ageCapMult;
 
   const bodyGrowthLimiter =
     age >= 18 ? 1.0 : age >= 15 ? 0.65 : age >= 12 ? 0.36 : age >= 8 ? 0.2 : 0.14;
@@ -2342,34 +2375,48 @@ const computeIndividualStatCaps = (
   const body = BODY_TYPES[bodyType] || BODY_TYPES.balanced;
   const giantPhyExtra = (genomes.giant_body_dna || 0) * 1.5 * ch4Penalty;
 
+  // 30歳を超えたら最低保証を外す。
+  //
+  // 保証が 3/3/4/3 あると、どれだけ衰えても総合力が 13 残る。
+  // 地域ジュニアの要求（6.5）を永久に超え続けるので契約が切れず、
+  // 実測で 58歳・63歳まで現役が続いていた（docs/BALANCE_LOG.md ⑮）。
+  const floorBody = age >= 30 ? 1 : 3;
+  const floorIq = age >= 30 ? 1 : 4;
+
+  // ポジションイベント・宿敵パークの永続加算にも加齢を効かせる。
+  // ここだけ pool の外にあると、周回を重ねた人ほど歳を取っても落ちなくなり、
+  // 「60歳の銀河系リーガー」が復活する。
+  const permCap = (v) => (v || 0) * ageCapMult;
+
   return {
     tec: Math.max(
-      3,
+      floorBody,
       Math.round(
-        (pool * pos.capRatio.tec * body.capMult.tec + (posEventCaps.tec || 0) + (rivalPerkCaps.tec || 0)) *
+        (pool * pos.capRatio.tec * body.capMult.tec + permCap(posEventCaps.tec) + permCap(rivalPerkCaps.tec)) *
           bodyGrowthLimiter
       )
     ),
     phy: Math.max(
-      3,
+      floorBody,
       Math.round(
         (pool * pos.capRatio.phy * body.capMult.phy +
-          giantPhyExtra +
-          (posEventCaps.phy || 0) +
-          (rivalPerkCaps.phy || 0)) *
+          giantPhyExtra * ageCapMult +
+          permCap(posEventCaps.phy) +
+          permCap(rivalPerkCaps.phy)) *
           bodyGrowthLimiter
       )
     ),
     iq: Math.max(
-      4,
+      floorIq,
       Math.round(
-        (pool * pos.capRatio.iq * body.capMult.iq + (posEventCaps.iq || 0) + (rivalPerkCaps.iq || 0)) * brainLimiter
+        (pool * pos.capRatio.iq * body.capMult.iq + permCap(posEventCaps.iq) + permCap(rivalPerkCaps.iq)) *
+          brainLimiter
       )
     ),
     sht: Math.max(
-      3,
+      floorBody,
       Math.round(
-        (pool * pos.capRatio.sht * body.capMult.sht + (posEventCaps.sht || 0) + (rivalPerkCaps.sht || 0)) *
+        (pool * pos.capRatio.sht * body.capMult.sht + permCap(posEventCaps.sht) + permCap(rivalPerkCaps.sht)) *
           bodyGrowthLimiter
       )
     )
@@ -2400,8 +2447,7 @@ const applyStatGrowth = (s, key, rawDelta) => {
     rem -= under;
   }
 
-  const excessRatio = Math.max(0, (val - cap) / Math.max(8, cap));
-  const diminishing = 1 / (1 + excessRatio * 7.0);
+  const diminishing = overCapDiminishing(val, cap);
   const overGain = rem * baseOverRatio * diminishing;
   gain += overGain;
   s.stats[key] = Number((val + overGain).toFixed(4));
@@ -2446,7 +2492,7 @@ const getDrillEffectiveStats = (s, drill) => {
   const protegeBondLv = s.protege?.bondLv || 0;
   const cosmicProtegeMult = 1 + (s.ascensionUpgrades?.cosmic_protege_sync || 0) * 0.22;
 
-  const globalMult =
+  const rawGlobalMult =
     (1 + memLv * 0.11) *
     (1 + (s.ascensionUpgrades?.divine_growth_overdrive || 0) * 0.25) *
     cosmicProtegeMult *
@@ -2475,6 +2521,10 @@ const getDrillEffectiveStats = (s, drill) => {
     (s.completedChallenges?.includes('ch_no_gear') ? 1.35 : 1.0) *
     ((s.zoneFeverMonths || 0) > 0 ? 2.2 : 1.0) *
     stage.growthMult;
+
+  // 要素を全部揃えたときの指数爆発を抑える（src/lib/softcap.js）。
+  // 実挙動側（executeDrillInternal）と必ず同じ式にすること。
+  const globalMult = softcap(rawGlobalMult, GROWTH_SOFTCAP.threshold, GROWTH_SOFTCAP.strength);
 
   const ch2BodyTecMult = s.completedChallenges?.includes('ch_pure_body') ? 1.2 : 1.0;
 
@@ -2542,8 +2592,7 @@ const getDrillEffectiveStats = (s, drill) => {
   const isCapped = curVal >= capVal;
   const hasBreak = !isBtBanned && Boolean(s.breakthroughs?.limit_break_manual);
   const ch4OverMult = s.completedChallenges?.includes('ch_half_cap') ? 2.5 : 1.0;
-  const excessRatio = Math.max(0, (curVal - capVal) / Math.max(8, capVal));
-  const diminishing = 1 / (1 + excessRatio * 7.0);
+  const diminishing = overCapDiminishing(curVal, capVal);
   const overRatio = overCapRatio(hasBreak, ch4OverMult) * diminishing;
   const estDelta = isCapped ? baseUnit * overRatio : baseUnit;
 
@@ -2757,11 +2806,11 @@ export default function App() {
       const retainedHobbies = { ...(persistentPerks.retainedHobbies || {}) };
       const prophecyLv = persistentPerks.prophecyLv || 0;
 
-      const activeProtegeId = persistentPerks.protegeData?.archetypeId || null;
-      const protege = {
-        archetypeId: activeProtegeId,
-        bondLv: activeProtegeId ? Math.max(1, protegeBonds[activeProtegeId] || persistentPerks.protegeData?.bondLv || 1) : 1
-      };
+      // タイムリープすると弟子との関係もゼロに戻る。
+      // 向こうはこちらを覚えていないし、まだ出会ってもいない（docs/GAME_DESIGN.md §2）。
+      // protegeBonds は図鑑（各アーキタイプの最高到達Lv）の記録専用。
+      // この人生で誰を育てるかは、この人生であらためて選ぶ。
+      const protege = { archetypeId: null, bondLv: 1 };
 
       const isTwilightChallenge = activeChallenge === 'ch_twilight_32';
       const startAge = isTwilightChallenge ? 32 : 5;
@@ -2841,15 +2890,12 @@ export default function App() {
       const safeEquippedCharms = [...unlockedCharms].filter((id) => equippedCharms.includes(id)).slice(0, maxC);
       const safeEquippedTraits = [...unlockedTraits].filter((id) => equippedTraits.includes(id)).slice(0, maxT);
 
-      const protegeObj = protege.archetypeId ? PROTEGE_ARCHETYPES[protege.archetypeId] : null;
       const chObj = activeChallenge ? CHALLENGES_DEF.find((c) => c.id === activeChallenge) : null;
       const introMsg = chObj
         ? `【縛りチャレンジ開始・${startAge}歳4月】${chObj.code}「${chObj.name}」に挑戦！（終了後は元の資産に完全復元）`
-        : protegeObj && isNextGen
-          ? `【師弟輪廻・5歳4月】愛弟子「${protegeObj.name}（絆Lv.${protege.bondLv}）」と記憶を共有して再会！${protegeObj.greetQuote}`
-          : generation === 1 && ascCount === 0
-            ? `【第1周目・5歳4月】無名の補欠候補「${profile.playerName}」の人生が始まった！まずは上の『コーン・ドリブル』で基礎を鍛えよう！`
-            : `【タイムリープ発動・5歳4月】頭脳と知識は大人だが、肉体はただの5歳児！成長期に合わせて再び世界の高みへ駆け上がろう！`;
+        : generation === 1 && ascCount === 0
+          ? `【第1周目・5歳4月】無名の補欠候補「${profile.playerName}」の人生が始まった！まずは上の『コーン・ドリブル』で基礎を鍛えよう！`
+          : `【タイムリープ発動・5歳4月】頭脳と知識は大人だが、肉体はただの5歳児！成長期に合わせて再び世界の高みへ駆け上がろう！`;
 
       return {
         pendingUnlocks: freshUnlocks.length > 0 ? freshUnlocks.map((u) => u.id) : null,
@@ -3631,7 +3677,7 @@ export default function App() {
       const protegeBondLv = s.protege?.bondLv || 0;
       const cosmicProtegeMult = 1 + (s.ascensionUpgrades?.cosmic_protege_sync || 0) * 0.22;
 
-      const mult =
+      const rawMult =
         (1 + memLv * 0.11) *
         (1 + (s.ascensionUpgrades?.divine_growth_overdrive || 0) * 0.25) *
         cosmicProtegeMult *
@@ -3660,6 +3706,10 @@ export default function App() {
         (s.completedChallenges?.includes('ch_no_gear') ? 1.35 : 1.0) *
         ((s.zoneFeverMonths || 0) > 0 ? 2.2 : 1.0) *
         stage.growthMult;
+
+      // 要素を全部揃えたときの指数爆発を抑える（src/lib/softcap.js）。
+      // UI予測側（getDrillEffectiveStats）と必ず同じ式にすること。
+      const mult = softcap(rawMult, GROWTH_SOFTCAP.threshold, GROWTH_SOFTCAP.strength);
 
       const ch2BodyTecMult = s.completedChallenges?.includes('ch_pure_body') ? 1.2 : 1.0;
 
@@ -3910,7 +3960,7 @@ export default function App() {
 
       const childGlobalMult = s.life?.childActive ? 1.12 : 1.0;
 
-      const globalPowerMult =
+      const rawGlobalPowerMult =
         (1 + (g.iron_will_dna || 0) * 0.02) *
         (1 + (g.allrounder_dna || 0) * 0.02) *
         (1 + (g.total_player_dna || 0) * 0.015) *
@@ -3947,6 +3997,9 @@ export default function App() {
         (syns.some((x) => x.id === 'syn_total_orchestra') ? 1.15 : 1.0) *
         (syns.some((x) => x.id === 'syn_rival_eternal') ? 1.16 : 1.0) *
         ((s.zoneFeverMonths || 0) > 0 ? 1.3 : 1.0);
+
+      // 30個以上の倍率を素直に掛けると指数で爆発する（src/lib/softcap.js）
+      const globalPowerMult = softcap(rawGlobalPowerMult, POWER_SOFTCAP.threshold, POWER_SOFTCAP.strength);
 
       const underdogBoost =
         oppPower > rating
@@ -4009,11 +4062,17 @@ export default function App() {
         globalPowerMult *
         underdogBoost;
 
+      // 1周目はチュートリアル。何をしても公式戦では勝てない、という体験を作る。
+      // 本人の評価（2026-11-19）:
+      //   「1週目はこれでいいかも。公式戦で1勝もできないその惨めさっていうものがよく伝わってる」
+      // 2周目以降は普通に戦えるので、ここは1周目だけの係数。
+      const isFirstLife = s.generation === 1 && (s.ascensionCount || 0) === 0;
       const myTeamPower =
         (shootPower * posObj.matchWeight.shoot +
           midPower * posObj.matchWeight.mid +
           defPower * posObj.matchWeight.def) *
-        4.0;
+        4.0 *
+        (isFirstLife ? 0.42 : 1.0);
       const ratio = myTeamPower / Math.max(1, oppPower);
 
       let myXg =
@@ -4610,8 +4669,15 @@ export default function App() {
             newState.relations.coachTrust = (newState.relations.coachTrust || 1) + 1;
             newState.careerCoachLessons = (newState.careerCoachLessons || 0) + 1;
           }
-          if (newState.protege?.archetypeId && newState.tactics >= 50 && newState.stamina >= newState.maxStamina * 0.8) {
+          const protegeMonth = newState.age * 12 + newState.month;
+          if (
+            newState.protege?.archetypeId &&
+            newState.lastProtegeMonth !== protegeMonth &&
+            newState.tactics >= 50 &&
+            newState.stamina >= newState.maxStamina * 0.8
+          ) {
             const pId = newState.protege.archetypeId;
+            newState.lastProtegeMonth = protegeMonth;
             newState.tactics = Number((newState.tactics - 20).toFixed(1));
             newState.stamina = Number((newState.stamina - 10).toFixed(2));
             const nextBond = (newState.protege.bondLv || 1) + 1;
@@ -4630,20 +4696,30 @@ export default function App() {
           }
         }
         if (secLv >= 2) {
-          if (!isSocialBanned && !newState.life.married && newState.age >= 15 && newState.money >= 5000) {
+          // 自動消化も手動と同じルール（月1回・+6・上限100・結婚は100）で進める。
+          // ここだけ旧ルール（+10・40で結婚）だと、秘書を買った人が
+          // 一瞬で結婚してしまい、段階イベントを一つも見ないまま終わる。
+          const romanceMonth = newState.age * 12 + newState.month;
+          if (
+            !isSocialBanned &&
+            !newState.life.married &&
+            newState.lastRomanceMonth !== romanceMonth &&
+            newState.age >= 15 &&
+            newState.money >= 5000 &&
+            (newState.life.affection || 0) < AFFECTION_MAX
+          ) {
             const pType = newState.life.partnerType || 'childhood';
             const pObj = PARTNER_TYPES[pType];
-            const newAff = (newState.life.affection || 0) + 10;
-            let married = newState.life.married;
+            const baseAff = newState.life.affection || 0;
+            const newAff = Math.min(AFFECTION_MAX, baseAff + AFFECTION_PER_DATE);
+            const milestone = reachedMilestone(baseAff, newAff);
+            const married = newAff >= AFFECTION_MARRY && newState.age >= 18;
             const hasChild = newState.life.hasChild;
-            let famAdd = 0;
-            if (newAff >= 40 && newState.age >= 18 && !married) {
-              married = true;
-              famAdd += 1;
-            }
+
+            newState.lastRomanceMonth = romanceMonth;
             newState.money -= 5000;
-            newState.careerTotalAffection = (newState.careerTotalAffection || 0) + 10;
-            newState.careerFamilyEvents = (newState.careerFamilyEvents || 0) + famAdd;
+            newState.careerTotalAffection = (newState.careerTotalAffection || 0) + AFFECTION_PER_DATE;
+            newState.careerFamilyEvents = (newState.careerFamilyEvents || 0) + (married ? 1 : 0);
             const prevRec = newState.partnerRecords?.[pType] || { maxAff: 0, married: false };
             newState.partnerRecords = {
               ...(newState.partnerRecords || {}),
@@ -4654,14 +4730,35 @@ export default function App() {
             };
             newState.life = {
               ...newState.life,
-              status: married ? `${pObj.name}と結婚（浮気なし・一途）` : `${pObj.name}と交際中`,
+              status: married
+                ? `${pObj.name}と結婚（浮気なし・一途）`
+                : `${pObj.name}と交際中 (親密度${newAff}/${AFFECTION_MAX})`,
               partnerType: pType,
               affection: newAff,
               married,
               hasChild
             };
-            if (newAff >= 20 && !newState.unlockedCharms.includes('charm_lover')) {
-              newState.unlockedCharms = [...newState.unlockedCharms, 'charm_lover'];
+            if (milestone) {
+              const writer = ROMANCE_FLAVOR[pType]?.[milestone.key];
+              if (writer) {
+                const text = `【${milestone.label}】
+` + writer(newState, pObj.name);
+                newState.storyFlavor = text;
+                addLogMsg(newState, text, 'story');
+              }
+              if (milestone.effect === 'charm' && !newState.unlockedCharms.includes('charm_lover')) {
+                newState.unlockedCharms = [...newState.unlockedCharms, 'charm_lover'];
+              }
+              if (milestone.effect === 'mental') {
+                newState.maxMental = Number((newState.maxMental + 10).toFixed(2));
+              }
+              if (milestone.effect === 'growth') {
+                newState.maxStamina = Number((newState.maxStamina + 10).toFixed(2));
+                newState.tactics = Number((newState.tactics + 60).toFixed(1));
+              }
+              if (milestone.effect === 'stamina') {
+                newState.maxStamina = Number((newState.maxStamina + 15).toFixed(2));
+              }
             }
           }
           if (newState.life.married && !newState.life.hasChild && newState.age >= 20 && nextRandom(newState) < 0.18) {
@@ -5089,12 +5186,20 @@ export default function App() {
 
         // 月あたりの減少率。年齢の2乗で効くので、歳を取るほど一気に落ちる
         const monthlyRate = Math.min(0.5, (0.002 + decayYears * decayYears * 0.0006) * totalDecayMult);
-        const shrink = (v, mult) => Number(Math.max(1.0, v * (1 - monthlyRate * mult)).toFixed(3));
-        newState.stats.phy = shrink(newState.stats.phy, 1.0);
-        newState.stats.tec = shrink(newState.stats.tec, 0.42);
-        newState.stats.sht = shrink(newState.stats.sht, 0.42);
+        // 落ちる先は「その年齢の上限」まで。
+        // 上限（computeIndividualStatCaps の ageCapMult）が歳とともに落ちるので、
+        // ここは上限へ収束させる役。上限より下では削らない
+        // ＝「衰えたぶんは練習で維持できるが、器を超えては戻せない」形にする。
+        const shrink = (v, mult, capV) =>
+          Number(
+            Math.max(Math.min(v, capV), Math.max(1.0, v * (1 - monthlyRate * mult))).toFixed(3)
+          );
+        const capOf = (key) => newState.statCaps?.[key] || 1;
+        newState.stats.phy = shrink(newState.stats.phy, 1.0, capOf('phy'));
+        newState.stats.tec = shrink(newState.stats.tec, 0.42, capOf('tec'));
+        newState.stats.sht = shrink(newState.stats.sht, 0.42, capOf('sht'));
         // 戦術眼は経験なので落ちにくいが、まったく落ちないわけでもない
-        newState.stats.iq = shrink(newState.stats.iq, 0.18);
+        newState.stats.iq = shrink(newState.stats.iq, 0.18, capOf('iq'));
         newState.maxStamina = Number(Math.max(15, newState.maxStamina - 0.18 * totalDecayMult).toFixed(2));
         if (newState.stamina > newState.maxStamina) {
           newState.stamina = newState.maxStamina;
@@ -5174,8 +5279,21 @@ export default function App() {
       // 引退は「年齢」ではなく「どこも契約してくれなくなったとき」。
       // 衰えて降格を続け、最下層でも通用しなくなったら現役生活が終わる。
       // docs/GAME_DESIGN.md §18
+      //
+      // ただし「最下層まで落ちるのを待つ」だけだと、実測で引退しなかった。
+      // 衰えても戦術眼（iq）は落ちにくいので総合力が 6 前後で下げ止まり、
+      // 地域ジュニアの要求（6.5×0.72=4.68）を割らずに 71歳まで現役が続いた。
+      //
+      // 現実のほうが近い: 最下層に落ちるより前に、
+      // 「ピーク時の何割まで落ちたか」でオファーが来なくなる。
+      // 33歳以降、ピークの4割を切ったらどこも契約しない。
+      // 衰え緩和を積めば低下そのものが遅くなるので、その人は長く現役でいられる。
+      const careerPeak = Math.max(newState.peakRatingReached || 0, postDecayRating);
+      const declineRatio = careerPeak > 0 ? postDecayRating / careerPeak : 1;
       const noContract =
-        newState.categoryId === 0 && postDecayRating < CONTRACT_FLOOR_RATING && newState.age >= 24;
+        newState.age >= 24 &&
+        ((newState.categoryId === 0 && postDecayRating < CONTRACT_FLOOR_RATING) ||
+          (newState.age >= 33 && declineRatio < 0.4));
       // 安全弁。衰え緩和を積みきった場合でも無限には続かないようにする
       const hardAgeLimit = newState.age >= 80;
 
@@ -5623,20 +5741,33 @@ export default function App() {
     });
   };
 
-  // --- 特別アクション：愛弟子指名＆特訓（いつでも切替可能＆絆Lv.5コンプ図鑑！） ---
+  // --- 特別アクション：愛弟子指名＆特訓 ---
+  //
+  // 一度指名したら、その人生のあいだは変更できない。
+  // 本人指摘（2026-11-23）:
+  //   「弟子システム、すぐ弟子を替えて何回か鍛えるだけで図鑑コンプになってしまう。
+  //     1つの人生で1人しか弟子を作れない（途中で変えられない）用にするか」
+  //
+  // 絆Lv も人生ごとに 1 から。相手はこちらを覚えていない（docs/GAME_DESIGN.md §2）。
+  // protegeBonds は図鑑（最高到達Lv）の記録専用にする。
+  // 結果として、4人の図鑑を埋めるには最低4周かかる。
   const selectProtege = (archId) => {
     setGameState((prev) => {
       const arch = PROTEGE_ARCHETYPES[archId];
       if (!arch) return prev;
-      const savedBondLv = Math.max(1, prev.protegeBonds?.[archId] || 1);
+      // 今世すでに弟子がいるなら変更不可
+      if (prev.protege?.archetypeId) return prev;
       const next = {
         ...prev,
-        protege: { archetypeId: archId, bondLv: savedBondLv },
-        protegeBonds: { ...(prev.protegeBonds || {}), [archId]: savedBondLv },
-        storyFlavor: `🎓【愛弟子指名】${arch.name}（${arch.pos}・絆Lv.${savedBondLv}）と師弟コンビを結成！${arch.greetQuote}`
+        protege: { archetypeId: archId, bondLv: 1 },
+        protegeBonds: {
+          ...(prev.protegeBonds || {}),
+          [archId]: Math.max(1, prev.protegeBonds?.[archId] || 0)
+        },
+        storyFlavor: `🎓【愛弟子指名】${arch.name}（${arch.pos}）と師弟の縁を結んだ。${arch.greetQuote}`
       };
-      addLogMsg(next, `🎓【師弟結成】「${arch.name}[${arch.pos}]」を愛弟子に指名！（絆Lv.${savedBondLv}）`, 'story');
-      pushToast(`🎓 愛弟子：${arch.name}`, `${arch.title}（絆Lv.${savedBondLv}）と特訓可能に！`, 'sky');
+      addLogMsg(next, `🎓【師弟結成】「${arch.name}[${arch.pos}]」を愛弟子に指名（この人生では変更できない）`, 'story');
+      pushToast(`🎓 愛弟子：${arch.name}`, `${arch.title}。この人生の弟子はこの子だけ`, 'sky');
       return next;
     });
   };
@@ -5647,10 +5778,14 @@ export default function App() {
       if (!pId) return prev;
       const arch = PROTEGE_ARCHETYPES[pId];
       if (!arch || prev.tactics < 20 || prev.stamina < 10) return prev;
+      // 月1回まで。連打で絆Lvを積み上げられると、人生の重みが消える
+      const nowMonth = prev.age * 12 + prev.month;
+      if (prev.lastProtegeMonth === nowMonth) return prev;
 
       const nextBond = (prev.protege?.bondLv || 1) + 1;
       const next = {
         ...prev,
+        lastProtegeMonth: nowMonth,
         tactics: Number((prev.tactics - 20).toFixed(1)),
         stamina: Number((prev.stamina - 10).toFixed(2)),
         protege: { archetypeId: pId, bondLv: nextBond },
@@ -5803,13 +5938,28 @@ export default function App() {
     });
   };
 
-  // --- 特別アクション：恋愛交流＆属性解放制（結婚後は恋愛欄非表示！） ---
+  // --- 特別アクション：恋愛（段階制） ---
+  //
+  // 本人指摘（2026-11-23）:
+  //   「恋人システムも同じようなもので、それぞれ数回ずつクリックするだけで
+  //     終わる詰まらない要素という感じになってしまっている。もったいない」
+  //
+  // 旧: 1回 +10、40 で結婚。4回押せば終わり。
+  // 新: 1回 +6、上限100、月1回まで。20/40/60/80/100 の節目で
+  //     相手ごとに違う出来事が起きる（src/data/romanceEvents.js）。
+  //
+  // 好感度は人生ごとにゼロから。相手はこちらを覚えていない。
+  // partnerRecords は図鑑（到達した最高好感度）の記録専用。
   const doRomanceEvent = (typeId = null) => {
     setGameState((prev) => {
       if (prev.age < 15 || prev.life.married) return prev;
       if (prev.activeChallenge === 'ch_lone_wolf' || prev.activeChallenge === 'ch_ascetic_god') {
         return prev;
       }
+      // 月1回まで。連打で終わらせられる要素にしない
+      const nowMonth = prev.age * 12 + prev.month;
+      if (prev.lastRomanceMonth === nowMonth) return prev;
+
       const pType = typeId || prev.life.partnerType || 'childhood';
       const pObj = PARTNER_TYPES[pType] || PARTNER_TYPES.childhood;
       if (!pObj.checkUnlock(prev, getTotalRating(prev))) return prev;
@@ -5818,29 +5968,25 @@ export default function App() {
       const costM = 8;
       if (prev.money < costG || prev.mental < costM) return prev;
 
-      // 好感度はその人生のもの。タイムリープすれば関係はゼロから始まる
-      // （docs/GAME_DESIGN.md §2「記憶と経験以外は何も引き継がない」）。
-      // 以前は相手を切り替えたときに partnerRecords[相手].maxAff から再開していたため、
-      // 前世で結婚した相手を選ぶと1回のデートで即結婚になっていた。
-      // partnerRecords は図鑑（コンプ記録）専用にする。
       const baseAff = prev.life.partnerType === pType ? prev.life.affection || 0 : 0;
+      if (baseAff >= AFFECTION_MAX) return prev;
 
-      // 18歳になるまでは結婚できない。好感度40で頭打ちにして、
-      // それ以上デートしても金と精神が減るだけ、という状態をなくす
-      if (baseAff >= 40 && prev.age < 18) return prev;
+      const newAff = Math.min(AFFECTION_MAX, baseAff + AFFECTION_PER_DATE);
+      const milestone = reachedMilestone(baseAff, newAff);
 
-      const newAff = baseAff + 10;
-      let married = false;
-      let familyEventsAdd = 0;
-      let statusLabel = `${pObj.name}と交際中 (親密度${newAff}/40)`;
-      let romanceFlavor = `💕【甘いひととき】${pObj.name}と街でデート！「サッカーに打ち込むあなたの姿が一番好きよ」――心が深く癒やされた。`;
+      // 結婚は好感度100かつ18歳以上
+      const canMarry = newAff >= AFFECTION_MARRY && prev.age >= 18;
+      const married = canMarry;
+      const statusLabel = married
+        ? `${pObj.name}と結婚（一途・浮気なし）`
+        : `${pObj.name}と交際中 (親密度${newAff}/${AFFECTION_MAX})`;
 
-      if (newAff >= 40 && prev.age >= 18) {
-        married = true;
-        familyEventsAdd += 1;
-        statusLabel = `${pObj.name}と結婚（一途・浮気なし）`;
-        romanceFlavor = `💍【永遠の誓い】${pObj.name}と結婚式を挙げた！一途な愛を誓い、守るべき家族の絆が最強の原動力になる！`;
-        pushToast('💍 ゴールイン結婚！', `${pObj.name}と結婚した！（今世の恋愛欄は完了）`, 'pink');
+      let romanceFlavor = `💕【${pObj.name}との時間】街で過ごした。特別なことは何も起きていない。親密度 ${newAff}/${AFFECTION_MAX}。`;
+      if (milestone) {
+        const writer = ROMANCE_FLAVOR[pType]?.[milestone.key];
+        if (writer) {
+          romanceFlavor = `【${milestone.label}】\n` + writer(prev, pObj.name);
+        }
       }
 
       const prevRec = prev.partnerRecords?.[pType] || { maxAff: 0, married: false };
@@ -5854,11 +6000,12 @@ export default function App() {
 
       const next = {
         ...prev,
+        lastRomanceMonth: nowMonth,
         money: prev.money - costG,
         mental: Math.min(prev.maxMental, prev.mental + 8),
         stamina: Math.min(prev.maxStamina, prev.stamina + 8),
-        careerTotalAffection: (prev.careerTotalAffection || 0) + 10,
-        careerFamilyEvents: (prev.careerFamilyEvents || 0) + familyEventsAdd,
+        careerTotalAffection: (prev.careerTotalAffection || 0) + AFFECTION_PER_DATE,
+        careerFamilyEvents: (prev.careerFamilyEvents || 0) + (married ? 1 : 0),
         storyFlavor: romanceFlavor,
         partnerRecords: nextRecords,
         life: {
@@ -5870,12 +6017,37 @@ export default function App() {
         }
       };
 
-      if (newAff >= 20 && !next.unlockedCharms.includes('charm_lover')) {
-        next.unlockedCharms = [...next.unlockedCharms, 'charm_lover'];
-        pushToast('🧶 絆のお守り獲得', '「手編みの絆ミサンガ」を受け取った！', 'pink');
+      // 節目の効果。派手なものは置かない。長く続けた人が少しずつ得をする形にする
+      if (milestone) {
+        if (milestone.effect === 'charm' && !next.unlockedCharms.includes('charm_lover')) {
+          next.unlockedCharms = [...next.unlockedCharms, 'charm_lover'];
+          pushToast('🧶 絆のお守り獲得', '「手編みの絆ミサンガ」を受け取った！', 'pink');
+        }
+        if (milestone.effect === 'mental') {
+          next.maxMental = Number((next.maxMental + 10).toFixed(2));
+          next.mental = next.maxMental;
+        }
+        if (milestone.effect === 'growth') {
+          next.maxStamina = Number((next.maxStamina + 10).toFixed(2));
+          next.tactics = Number((next.tactics + 60).toFixed(1));
+        }
+        if (milestone.effect === 'stamina') {
+          next.maxStamina = Number((next.maxStamina + 15).toFixed(2));
+          next.stamina = next.maxStamina;
+        }
+        if (milestone.effect === 'marry') {
+          pushToast('💍 結婚', `${pObj.name}と結婚した（${pObj.perk}）`, 'pink');
+        }
+        if (milestone.effect !== 'marry') {
+          pushToast(`💕 ${milestone.label}`, `${pObj.name}との親密度 ${newAff}/${AFFECTION_MAX}`, 'pink');
+        }
       }
 
-      addLogMsg(next, `💕【オフの交流】${pObj.name}とデート（親密度${newAff} / ${statusLabel}）`, 'story');
+      addLogMsg(
+        next,
+        `💕【オフの交流】${pObj.name}と過ごした（親密度${newAff}/${AFFECTION_MAX} / ${statusLabel}）`,
+        'story'
+      );
       checkGenomeAwakening(next);
       return next;
     });
@@ -7660,7 +7832,7 @@ ${activeChObj.rewardText}`}
                     <div className="bg-sky-950/30 border border-sky-700/80 p-1.5 space-y-1">
                       <div className="flex flex-wrap items-center justify-between gap-1">
                         <span className="text-[9px] font-bold text-sky-300 flex items-center gap-1">
-                          <GraduationCap size={11} /> 次世代「師弟継承」（いつでも切替可・全4人絆Lv.5図鑑コンプで全上限+18！）
+                          <GraduationCap size={11} /> 次世代「師弟継承」（この人生で育てられるのは1人だけ・全4人絆Lv.5図鑑コンプで全上限+18）
                         </span>
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono text-[8.5px] text-amber-300">
@@ -7669,10 +7841,17 @@ ${activeChObj.rewardText}`}
                           {activeProtegeObj && (
                             <button
                               onClick={trainProtege}
-                              disabled={isSocialDisabledByCh || gameState.tactics < 20 || gameState.stamina < 10}
+                              disabled={
+                                isSocialDisabledByCh ||
+                                gameState.tactics < 20 ||
+                                gameState.stamina < 10 ||
+                                gameState.lastProtegeMonth === gameState.age * 12 + gameState.month
+                              }
                               className="px-2 py-0.5 bg-sky-700 hover:bg-sky-600 disabled:opacity-45 text-white font-bold text-[8.5px] cursor-pointer"
                             >
-                              🔥 合同特訓 (20Pt/体-10)
+                              {gameState.lastProtegeMonth === gameState.age * 12 + gameState.month
+                                ? '今月は特訓済み'
+                                : '🔥 合同特訓 (20Pt/体-10)'}
                             </button>
                           )}
                         </div>
@@ -7680,18 +7859,24 @@ ${activeChObj.rewardText}`}
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-1">
                         {Object.values(PROTEGE_ARCHETYPES).map((arch) => {
                           const isSelected = gameState.protege?.archetypeId === arch.id;
-                          const savedLv = gameState.protegeBonds?.[arch.id] || 0;
-                          const isComp = savedLv >= 5;
+                          // この人生ですでに誰かを指名していたら、他の子は選べない
+                          const locked = Boolean(gameState.protege?.archetypeId) && !isSelected;
+                          const bestLv = gameState.protegeBonds?.[arch.id] || 0;
+                          const isComp = bestLv >= 5;
+                          const nowLv = isSelected ? gameState.protege?.bondLv || 1 : 0;
                           return (
                             <button
                               key={arch.id}
                               onClick={() => selectProtege(arch.id)}
-                              className={`p-1 border text-left cursor-pointer ${
-                                isSelected
-                                  ? 'bg-sky-900 border-sky-300 text-white'
-                                  : isComp
-                                    ? 'bg-amber-950/35 border-amber-500/80 text-amber-100'
-                                    : 'bg-slate-950 hover:bg-slate-800 border-sky-800/70 text-sky-200'
+                              disabled={locked}
+                              className={`p-1 border text-left ${
+                                locked
+                                  ? 'bg-slate-950/60 border-slate-800 text-slate-500 opacity-50 cursor-not-allowed'
+                                  : isSelected
+                                    ? 'bg-sky-900 border-sky-300 text-white cursor-default'
+                                    : isComp
+                                      ? 'bg-amber-950/35 border-amber-500/80 text-amber-100 cursor-pointer'
+                                      : 'bg-slate-950 hover:bg-slate-800 border-sky-800/70 text-sky-200 cursor-pointer'
                               }`}
                             >
                               <div className="flex items-center justify-between font-bold text-[8.5px]">
@@ -7699,7 +7884,7 @@ ${activeChObj.rewardText}`}
                                   {arch.name} [{arch.pos}]
                                 </span>
                                 <span className="font-mono text-[7.5px] text-amber-300">
-                                  {isComp ? `★Lv.${savedLv}` : savedLv > 0 ? `Lv.${savedLv}` : '未指名'}
+                                  {isSelected ? `絆Lv.${nowLv}` : isComp ? `★最高${bestLv}` : bestLv > 0 ? `最高${bestLv}` : '未育成'}
                                 </span>
                               </div>
                               <div className="text-[7.5px] text-slate-300 truncate">{arch.perkText}</div>
@@ -7761,15 +7946,25 @@ ${activeChObj.rewardText}`}
                       {gameState.age >= 15 && !gameState.life.married && (
                         <button
                           onClick={() => doRomanceEvent(null)}
-                          disabled={isSocialDisabledByCh || gameState.money < 5000 || gameState.mental < 8}
+                          disabled={
+                            isSocialDisabledByCh ||
+                            gameState.money < 5000 ||
+                            gameState.mental < 8 ||
+                            gameState.lastRomanceMonth === gameState.age * 12 + gameState.month ||
+                            (gameState.life.affection || 0) >= AFFECTION_MAX
+                          }
                           className="bg-slate-950 hover:bg-pink-950/30 disabled:opacity-45 border border-pink-800/80 p-1.5 text-left cursor-pointer"
                         >
                           <div className="flex items-center justify-between text-[9.5px] font-bold text-pink-300">
-                            <span>💕 現在の相手と恋愛デート</span>
+                            <span>
+                              💕 現在の相手と過ごす（親密度 {gameState.life.affection || 0}/{AFFECTION_MAX}）
+                            </span>
                             <span className="font-mono text-[8px]">5,000円 精-8</span>
                           </div>
                           <div className="text-[8.5px] text-slate-400 mt-0.5">
-                            親密度40＆18歳以上で結婚（結婚後は一途のため恋愛欄完了）
+                            {gameState.lastRomanceMonth === gameState.age * 12 + gameState.month
+                              ? '今月はもう会った（月に1回まで）'
+                              : `月1回まで。20/40/60/80/${AFFECTION_MAX} で出来事が起きる。${AFFECTION_MARRY}＆18歳以上で結婚`}
                           </div>
                         </button>
                       )}

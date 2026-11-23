@@ -24,3 +24,22 @@ export const BASE_OVER_RATIO = 1 / 45;
 export function overCapRatio(hasLimitBreak, challengeMult = 1) {
   return (hasLimitBreak ? LIMIT_BREAK_OVER_RATIO : BASE_OVER_RATIO) * challengeMult;
 }
+
+/**
+ * 上限を超えた量に応じた追加の逓減。
+ *
+ * 旧式は 1/(1 + excess*7) の双曲線だったため、
+ * 時間さえかければ上限の数百倍まで伸ばせた（val が sqrt(t) で増える）。
+ * 本人指摘（2026-11-23）:
+ *   「上限以上に能力が上がるのはいいが、減衰率をどんどんきつくしていくべき」
+ *
+ * 指数減衰に変える。上限と同じだけ超過したら 1/4、2倍超過で 1/16。
+ * 伸びは止まらないが、超過が進むほど加速度的に無意味になる。
+ *
+ * @param {number} val 現在値
+ * @param {number} cap 上限
+ */
+export function overCapDiminishing(val, cap) {
+  const excessRatio = Math.max(0, (val - cap) / Math.max(8, cap));
+  return Math.max(1e-7, Math.pow(0.5, excessRatio * 2.0));
+}
