@@ -45,11 +45,35 @@
 
 ### 2-2. 能力上限（cap）
 
-成長の主軸。`computeIndividualStatCaps`（2,230行・**位置引数17個**）で算出。
+成長の主軸。`computeIndividualStatCaps`（2,255行・**位置引数19個**）で算出。
 
 ```
-上限プール → POSITIONS[pos].capRatio × BODY_TYPES[body].capMult で4能力へ配分
+rawPool（ゲノム・結晶強化・ED・試練などの加算）
+  × stageMult（上位転生の段階: 1 / 2.5 / 7 / 20 / 60）
+  × divineMult（聖杯の才能器倍率）
+  × ch4Penalty（縛り）
+  × ageCapMult        ← v0.35 で追加
+  → POSITIONS[pos].capRatio × BODY_TYPES[body].capMult で4能力へ配分
 ```
+
+**加齢による器の縮小（v0.35）**:
+
+```
+decaySoften = max(0.12, 隠しゲノム×0.6 × king_eternal × 融合 × ED5 × CH5)
+ageCapMult  = age <= 29 ? 1 : max(0.006, 0.91 ^ ((age-29)^1.25 × decaySoften))
+```
+
+| 年齢 | 素の係数 | 緩和を全部積んだとき |
+|---:|---:|---:|
+| 35 | 0.41 | 0.89 |
+| 40 | 0.15 | 0.78 |
+| 45 | 0.05 | 0.69 |
+| 50 | 0.014 | 0.60 |
+
+ポジションイベント・宿敵パークの永続加算にも同じ係数が掛かる。
+**30歳以降は能力上限の最低保証（3/3/4/3）を 1 に落とす。**
+保証が残っていると、どれだけ衰えても総合力13が残り、
+地域ジュニアの要求（6.5）を永久に超えて契約が切れなかった。
 
 **年齢リミッター**（この設計が「頭脳は大人、体は子供」を作っている）:
 
@@ -64,14 +88,36 @@
 | 頭脳(iq) | 12–14歳 | 0.85 |
 | 頭脳(iq) | 15歳以上 | 1.0 |
 
-### 2-3. 上限超過時の逓減（`applyStatGrowth` / 2,408行）
+### 2-3. 上限超過時の逓減（`applyStatGrowth` / 2,480行）
 
 上限を超えても成長は止まらず、超過分が減衰する。
 
 ```
-超過分の基礎係数 = 1/18（通常） または 1/6（「限界突破の極意書」所持時）
-さらに  diminishing = 1 / (1 + excessRatio * 7.0)
+超過分の基礎係数 = 1/45（通常） または 1/15（「限界突破の極意書」所持時）
+さらに  diminishing = 0.5 ^ (excessRatio * 2.0)      ← v0.35 で指数減衰に
+         excessRatio = (現在値 - 上限) / max(8, 上限)
 ```
+
+上限と同じだけ超過したら 1/4、2倍超過で 1/16、3倍超過で 1/64。
+伸びは止まらないが、超過が進むほど加速度的に無意味になる。
+式は `src/lib/growth.js` の `overCapDiminishing` に一本化してある。
+
+### 2-3b. 成長倍率と試合戦力のソフトキャップ（v0.35）
+
+`executeDrillInternal` の成長倍率（27項の積）と `simulateAutoMatch` の
+試合戦力倍率（34項の積）は、そのまま掛けると指数で爆発する。
+`src/lib/softcap.js` で対数圧縮する。
+
+```
+softcap(v, threshold, strength)
+  v <= threshold → そのまま
+  v >  threshold → threshold * (1 + ln(1 + (v/threshold - 1) * strength) / strength)
+
+成長: threshold 6 / strength 0.6
+試合: threshold 8 / strength 0.7
+```
+
+**新しい倍率を足すときは必ずこの内側に入れる。** 外に足すとそこだけが穴になる。
 
 > 🐞 **この3行が `getDrillEffectiveStats`（2,573付近）にも完全コピーされている。**
 > しかも予測側だけ `!isBtBanned`（チャレンジ中のブレイクスルー封印）を見ていて、
@@ -247,6 +293,11 @@ Lv = floor( def.getStatVal(state) / def.step )   ※ maxLv でクランプ
 
 ## 6-1. 🔴 1周目は手動クリックなしでは一切成長しない
 
+> **v0.35 追記**: 1周目は試合戦力に ×0.42 が掛かる（`simulateAutoMatch` の `isFirstLife`）。
+> 進路選択でカテゴリは上がるが、公式戦ではほぼ勝てない。
+> 実機で 11試合 0勝 1ゴール。本人が評価していた「1勝もできない惨めさ」をここで作っている。
+
+
 `unlocks.autoFeature` が立つまで練習は手動実行のみ。
 AUTO の解放は `executeDrillInternal` の中（練習の累積）で行われるため、
 **一度も練習をクリックしないと AUTO も永久に解放されない。**
@@ -260,23 +311,32 @@ AUTO の解放は `executeDrillInternal` の中（練習の累積）で行われ
 
 ## 7. 引退とタイムリープ
 
-### 引退条件（4,972–4,977行）
+### 引退条件（v0.35）
 
 ```js
-isDeclineRetired =
-  age >= 36 &&
-  (peakRatingReached || 0) > 15 &&
-  postDecayRating < peakRatingReached * 0.62;
+careerPeak   = max(peakRatingReached, postDecayRating)
+declineRatio = postDecayRating / careerPeak
 
-if ((age >= maxRetireAge || isDeclineRetired) && !isRetired) { … }
+noContract =
+  age >= 24 &&
+  ( (categoryId === 0 && postDecayRating < 4.5)      // 最下層でも通用しない
+    || (age >= 33 && declineRatio < 0.4) );          // ピークの4割を切った
+
+hardAgeLimit = age >= max(40, maxRetireAge + 12);    // 肉体の限界
 ```
 
-`maxRetireAge = Math.round(33 + bodyLv * 0.5 + extraLifeBonus)`（2,850行）
+`maxRetireAge = Math.round(28 + bodyLv * 0.5 + extraLifeBonus)`
 
-延命要素: `iron_body` +0.5/Lv（最大5） / `king_eternal_dna` +0.6/Lv（最大5） /
+延命要素: `iron_body` +2.0/Lv（最大15） / `king_eternal_dna` +0.6/Lv /
 `secret_veteran_iron` +2 / `fused_eternal_king` +2 / CH5 +3
 
-> ⚠️ ED5「50歳現役」が到達可能かどうかは未検証。上の合計と基礎値から計算すると届かない可能性がある。
+素なら 28 → 限界40歳。鉄人をMAXまで積めば 58 → 限界70歳。
+
+**3つを併記しているのは、どれか一つでは抜け穴ができるため。**
+
+- 最下層判定だけ → 戦術眼が落ちにくいので総合力が6前後で下げ止まり、71歳まで現役（実測）
+- ピーク比だけ → 弱いキャリアほど低下率が小さく、64歳まで地域ジュニアに居座る（実測）
+- 年齢だけ → 本人が明確に否定している（「最初から何歳で強制転生ということではなく」）
 
 ### 第1段階転生（タイムリープ / `LEGACY_UPGRADES_DEF` 13種）
 

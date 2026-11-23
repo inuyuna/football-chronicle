@@ -86,7 +86,7 @@
 
 <div class="wrap">
   <header>
-    <p class="eyebrow">Football Chronicle · v0.2 時点</p>
+    <p class="eyebrow">Football Chronicle · v0.35 時点</p>
     <h1>ここから何を作るか</h1>
     <p>プレイして出てきた指摘を、依存関係と規模で並べ直したもの。上から順に片付ける。各版のテーマは1つに絞ってある。</p>
   </header>
@@ -121,18 +121,60 @@
 
     <div class="rel">
       <div class="ver">
-        <span class="state" style="color:var(--now)">次</span>
+        <span class="state" style="color:var(--done)">完了</span>
         <b>v0.3</b>
-        <div class="theme">画面を読めるようにする</div>
+        <div class="theme">周回ごとの解放と、ポジション・一時停止</div>
+      </div>
+      <div class="card done">
+        <ul class="items">
+          <li><span class="mark">✓</span><div><span class="t">増える機能を1周に1つずつ</span><div class="d">2周目:道具 / 3周目:師弟継承 / 4周目:お守り / 5周目:特性 / 6周目:趣味 / 7周目:宿敵共闘 / 8周目:ブランド。解放時にモーダルで説明とフレーバー</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">ポジションはいつでも変更可</span><div class="d">名前とポジションは転生では変わらない。名前は設定欄から</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">転生時の一時停止</span><div class="d">既定でON。設定で切り替え</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">要らない説明テキストの除去</span><div class="d">「全選択のMAX購入対応」など</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--done)">完了</span>
+        <b>v0.35</b>
+        <div class="theme">速すぎる／終わらない を直した</div>
+      </div>
+      <div class="card done">
+        <ul class="items">
+          <li><span class="mark">✓</span><div><span class="t">乗算の塊にソフトキャップ</span><div class="d">同じコードが「3周で地元中学」と「3周で創世神」の両方を出していた。倍率30項以上の積が爆発していたので対数で圧縮。閾値以下は素通しなので序盤は変わらない</div><div class="q">「3週目でフットボール神になってしまった。早すぎる」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">加齢で「才能の器」が縮む</span><div class="d">能力値だけ削っていたのでAUTO練習が毎月取り返していた。上限を落とす形に。35歳×0.41 / 40歳×0.15 / 45歳×0.05</div><div class="q">「身体能力は加齢するほど加速度的に低下するようにしろ」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">引退はピークからの低下率で</span><div class="d">33歳以降、ピークの4割を切ったら契約が来ない。最下層まで落ちるのを待つ方式だと実測71歳まで現役が続いていた</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">1周目は勝てない</span><div class="d">試合戦力×0.42。実機で11試合0勝1ゴール</div><div class="q">「1週目はほぼ勝てずゴールも決められないという感じにしろ」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">上限超過の減衰を指数に</span><div class="d">上限と同じだけ超過で1/4、2倍超過で1/16</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">上位転生で詰む問題</span><div class="d">要求Lvが結晶強化の全MAX（243）を超えて到達不能になっていた。買える上限の55%で頭打ちに</div><div class="q">「すべてマックスに上げても第二転生ができない状態になっている」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">上位転生でポンコツに戻る</span><div class="d">ゲノム・融合ゲノム・地元クラブ・上限ボーナス・国際タイトルを手放す。図鑑とEDと試練は残る</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">聖杯は鍛えた分だけ増える</span><div class="d">ピーク総合力・試合数・得点関与を加算。条件を満たした瞬間に転生するのが常に最適、という状態をなくした</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">弟子は1つの人生で1人</span><div class="d">途中変更できない。絆も人生ごとにリセット。図鑑を埋めるには最低4周</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">恋愛を段階制に</span><div class="d">上限100・月1回・20/40/60/80/100の節目で相手ごとに違う出来事（4人×5段階）</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">フレーバーを画面に出した</span><div class="d">エンディング7種は専用モーダルで全文。転生の語りは周回数で変化。上位転生は段階ごとに差し出すものが違う</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">聖杯に自動購入を追加</span><div class="d">輪廻の代理人（結晶強化）／覚醒の代理人（永続ブレイクスルー）</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">地元クラブは自分が上がらないと上がらない</span><div class="d">Lv2:欧州中堅 → Lv7:創世神。金だけで世界王者クラブまで買えていた</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">初期資金の手段を追加</span><div class="d">相場と勝ち馬の記憶（倍率）／恩人の顔を覚えている（15歳に一括）</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">重要情報を一か所に</span><div class="d">ヘッダー直下の帯に、年齢 / カテゴリ / チーム名 / ポジション / 試合数・勝利・ゴール・アシスト / 総合力と最高値 / 配偶者 / 弟子</div><div class="q">「今のポジション、今の人生での勝利数やゴール数、今のカテゴリ、チーム名など、重要な要素を分かりやすく一か所にまとめたい」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">子どもは16歳でサッカーの道へ</span><div class="d">「親が24歳以上」だったので、20歳で子どもができた直後に4歳児がプロデビューしていた</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">肉体の限界を現役寿命に連動</span><div class="d">素なら40歳、鉄人の肉体遺伝子をMAXまで積めば70歳。ピーク比だけだと弱いキャリアほど引退せず、実測で64歳まで地域ジュニアに居座った</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--now)">次</span>
+        <b>v0.36</b>
+        <div class="theme">v0.3 からの持ち越し</div>
       </div>
       <div class="card now">
         <ul class="items">
-          <li><span class="mark">1</span><div><span class="t">要らない説明テキストを全部消す<i class="size s">小</i></span><div class="d">「全選択のMAX購入の対象」のような、人間が読む必要のない文言</div><div class="q">「変な説明テキストは全部チェックして消せ」</div></div></li>
-          <li><span class="mark">2</span><div><span class="t">意味不明な記述の除去<i class="size s">小</i></span><div class="d">「WG固定」など、何を指しているか分からない表示</div></div></li>
-          <li><span class="mark">3</span><div><span class="t">重要情報を一か所にまとめる<i class="size m">中</i></span><div class="d">いまのポジション / この人生での勝利数・ゴール数 / カテゴリ / チーム名</div></div></li>
-          <li><span class="mark">4</span><div><span class="t">未解放のタブを隠す<i class="size m">中</i></span><div class="d">解放のヒントは必要なときだけ出す</div></div></li>
-          <li><span class="mark">5</span><div><span class="t">名前まわり<i class="size s">小</i></span><div class="d">転生で名前が変えられてしまうのを止め、設定欄から変更する形に。地元クラブのネームエディットも</div></div></li>
-          <li><span class="mark">6</span><div><span class="t">子どもがすぐプロに上がるテキスト<i class="size s">小</i></span><div class="d">表示の辻褄を合わせる</div></div></li>
+          <li><span class="mark">1</span><div><span class="t">第3段階で聖杯強化もリセット<i class="size l">大</i></span><div class="d">「記憶も含めて失うことで新たな力を得る」の実装。いまは文面だけ。自動購入を失って買い直すサイクルもここに乗る</div><div class="q">「三次転生では『記憶も含めて失うことで、新たな力を得るタイムリープ』って設定でいくか」</div></div></li>
+          <li><span class="mark">2</span><div><span class="t">要素を揃えた状態の計測<i class="size m">中</i></span><div class="d">いまの計測は結晶4種しか買わないので、ソフトキャップが効いているか数字で確認できない</div></div></li>
+          <li><span class="mark">3</span><div><span class="t">初期資金を意味のあるものに<i class="size l">大</i></span><div class="d">転生直後からすぐ稼げるので、初期資金が数年で無意味になる。子ども時代（5〜14歳）にしか買えないもの、幼少期の投資が後半に効く仕組みが要る</div><div class="q">「転生後すぐどんどん強くなって稼げて、初期資金なんてすぐ関係なくなるゲームバランスではある。うまく処理したい」</div></div></li>
         </ul>
       </div>
     </div>
@@ -227,14 +269,14 @@
 
   <div class="note">
     <h2>並行して進めるもの</h2>
-    <p><b>コードの分割。</b> <code>src/App.jsx</code> が約9,200行の単一ファイルで、データ定義・ゲームエンジン・UI が全部そこにある。機能追加のたびに事故る確率が上がるので、版の合間に少しずつ切り出す。順序は決めてあり、<code>docs/REFACTOR_PLAN.md</code> に Phase 1〜7 として書いてある。</p>
-    <p><b>バランスの実測。</b> <code>npm run measure</code> で20周ぶんを約3分でシミュレートできる。数値をいじるたびに回して、周回カーブが設計どおりか確認する。記録は <code>docs/BALANCE_LOG.md</code>。</p>
-    <p><b>回帰テスト。</b> いま47件。画面なしでゲームを22年ぶん自動プレイして、進路選択・引退・タイムリープ・オフライン進行が壊れていないかを見ている。壊れやすい所を直すたびに足す。</p>
+    <p><b>コードの分割。</b> <code>src/App.jsx</code> が約10,100行の単一ファイルで、データ定義・ゲームエンジン・UI が全部そこにある。機能追加のたびに事故る確率が上がるので、版の合間に少しずつ切り出す。順序は決めてあり、<code>docs/REFACTOR_PLAN.md</code> に Phase 1〜7 として書いてある。</p>
+    <p><b>バランスの実測。</b> <code>npm run measure</code> で周回カーブを、<code>aging.measure</code> で1年ごとの加齢カーブを出せる。数値をいじるたびに回す。記録は <code>docs/BALANCE_LOG.md</code>。<br>ただし<b>いまの計測は結晶強化を4種類しか買わない</b>ので、実プレイの「要素を全部揃えた状態」を再現できていない。v0.35 で入れたソフトキャップが効いているかは、この計測では分からない。</p>
+    <p><b>回帰テスト。</b> いま57件。画面なしでゲームを22年ぶん自動プレイして、進路選択・引退・タイムリープ・オフライン進行が壊れていないかを見ている。壊れやすい所を直すたびに足す。</p>
   </div>
 
   <div class="note">
     <h2>いちばん効く順に並べた理由</h2>
-    <p><b>v0.3 を先にするのは</b>、いま画面が読めない状態だから。何が起きているか分からないままバランスをいじっても、良くなったか判断できない。</p>
+    <p><b>v0.35 で何をしたか。</b> 同じコードが「遅すぎる」と「速すぎる」を同時に起こしていた。要素を揃えると倍率30項以上の積が指数で爆発し、揃えないと何も進まない。係数をどちらに合わせても片方が壊れるので、対数で圧縮する層（ソフトキャップ）を入れた。あわせて、加齢で引退しない問題を3方向から塞いだ。</p>
     <p><b>v0.4（チャレンジ）と v0.5（練習の枠モデル）を分けたのは</b>、どちらも触る範囲が広く、同時にやると何が効いたか分からなくなるため。</p>
     <p><b>v0.6 以降は追加</b>で、いま遊べている部分を壊さない。逆に v0.3〜v0.5 は既存の作りを変えるので、測定しながら進める。</p>
   </div>

@@ -4569,8 +4569,13 @@ export default function App() {
       if (clinicPt > 0) newState.tactics = Number((newState.tactics + clinicPt).toFixed(1));
       if (passiveFans > 0) newState.fans += passiveFans;
 
-      // 子ども成長＆24歳以上で自動サッカーデビュー（ランダム性別・才能＆専用ゲノム！）
-      if (newState.life?.hasChild && !newState.life?.childActive && newState.age >= 24) {
+      // 子どもが16歳になったらサッカーの道へ。
+      //
+      // 以前は「親が24歳以上」だったので、20歳で子どもができた直後に
+      // 4歳児がプロデビューしていた（本人指摘 2026-11-20）。
+      // childBornAge のないセーブは、従来どおり親20歳で生まれた扱いにする。
+      const childBorn = newState.life?.childBornAge || 20;
+      if (newState.life?.hasChild && !newState.life?.childActive && newState.age >= childBorn + 16) {
         const isDaughter = nextRandom(newState) < 0.5;
         const talents = isDaughter
           ? ['天賦の司令塔タイプ', '音速ウインガータイプ', '天才ファンタジスタタイプ']
@@ -4930,6 +4935,7 @@ export default function App() {
             newState.life = {
               ...newState.life,
               hasChild: true,
+              childBornAge: newState.age,
               status: '愛する妻と第一子誕生（成長待ち）'
             };
             newState.careerFamilyEvents = (newState.careerFamilyEvents || 0) + 1;
@@ -4937,7 +4943,7 @@ export default function App() {
             newState.storyFlavor = babyMsg;
             addLogMsg(newState, babyMsg, 'levelup');
             if (!suppressToast) {
-              pushToast('👶 第一子誕生！', '24歳以降に子どもが自動でサッカー選手デビューします！', 'pink');
+              pushToast('👶 第一子誕生！', 'この子が16歳になったら、自分からサッカーの道を選ぶ', 'pink');
             }
           }
           if (newState.age >= 16 && newState.mental >= newState.maxMental * 0.75) {
@@ -4954,6 +4960,7 @@ export default function App() {
         newState.life = {
           ...newState.life,
           hasChild: true,
+          childBornAge: newState.age,
           status: '愛する妻と第一子誕生（成長待ち）'
         };
         newState.careerFamilyEvents = (newState.careerFamilyEvents || 0) + 1;
@@ -4961,7 +4968,7 @@ export default function App() {
         newState.storyFlavor = babyMsg;
         addLogMsg(newState, babyMsg, 'levelup');
         if (!suppressToast) {
-          pushToast('👶 第一子誕生！', '24歳以降に子どもが自動でサッカー選手デビューします！', 'pink');
+          pushToast('👶 第一子誕生！', 'この子が16歳になったら、自分からサッカーの道を選ぶ', 'pink');
         }
       }
 
@@ -5459,8 +5466,16 @@ export default function App() {
         newState.age >= 24 &&
         ((newState.categoryId === 0 && postDecayRating < CONTRACT_FLOOR_RATING) ||
           (newState.age >= 33 && declineRatio < 0.4));
-      // 安全弁。衰え緩和を積みきった場合でも無限には続かないようにする
-      const hardAgeLimit = newState.age >= 80;
+      // 肉体の限界。
+      //
+      // 「ピークの4割」だけだと、弱いキャリアほど引退しない。
+      // ピークが 7 なら 2.8 を割るまで契約が続いてしまい、実測で64歳まで
+      // 地域ジュニアに居座った。低いピークは低下率も小さいので当然である。
+      //
+      // maxRetireAge（＝鉄人の肉体遺伝子などで伸びる現役寿命）に 12年の
+      // 猶予を足したところを限界にする。素なら 28+12=40歳、
+      // 鉄人をMAXまで積めば 58+12=70歳。寿命強化に意味が出る形にする。
+      const hardAgeLimit = newState.age >= Math.max(40, (newState.maxRetireAge || 28) + 12);
 
       if ((noContract || hardAgeLimit) && !newState.isRetired) {
         newState.isRetired = true;
@@ -7437,6 +7452,52 @@ ${activeChObj.rewardText}`}
           </button>
         </div>
       </header>
+
+      {/* =================
+          いまの状況をひとまとめにした帯。
+          本人の要望（2026-11-20）:
+            「今のポジション、今の人生での勝利数やゴール数、今のカテゴリ、
+              チーム名など、重要な要素を分かりやすく一か所にまとめたい」
+          左ペインに散らばっていたので、1行で全部見えるようにした。
+          ================= */}
+      <div className="shrink-0 bg-slate-950 border-b border-slate-800 px-2 py-1 flex items-center gap-2 overflow-x-auto text-[10px] font-mono whitespace-nowrap">
+        <span className="text-amber-300 font-bold">
+          {gameState.age}歳{gameState.month}月
+        </span>
+        <span className="text-slate-600">/</span>
+        <span className="text-sky-300">{CATEGORIES[gameState.categoryId].name}</span>
+        <span className="text-slate-300">{gameState.clubName}</span>
+        <span className="text-slate-600">/</span>
+        <span className="text-emerald-300 font-bold">{gameState.position}</span>
+        <span className="text-slate-600">/</span>
+        <span className="text-slate-300">
+          {formatNum(gameState.matchesPlayed)}試合
+          <span className="text-amber-200"> {formatNum(gameState.wins)}勝</span>
+          <span className="text-rose-200"> {formatNum(gameState.goals)}G</span>
+          <span className="text-indigo-200"> {formatNum(gameState.assists)}A</span>
+        </span>
+        <span className="text-slate-600">/</span>
+        <span className="text-slate-200">
+          総合 <span className="text-white font-bold">{formatNum(rating, 1)}</span>
+          <span className="text-slate-500"> (最高{formatNum(gameState.peakRatingReached || 0, 1)})</span>
+        </span>
+        {gameState.life?.married && (
+          <>
+            <span className="text-slate-600">/</span>
+            <span className="text-pink-300">
+              {PARTNER_TYPES[gameState.life.partnerType]?.name || '既婚'}
+            </span>
+          </>
+        )}
+        {activeProtegeObj && (
+          <>
+            <span className="text-slate-600">/</span>
+            <span className="text-sky-200">
+              弟子 {activeProtegeObj.name}（絆{gameState.protege?.bondLv || 1}）
+            </span>
+          </>
+        )}
+      </div>
 
       {/* ================= メインコンテンツ（1画面完全完結設計） ================= */}
       <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-1 p-1 overflow-y-auto md:overflow-hidden">

@@ -1,6 +1,6 @@
 # ARCHITECTURE — Football Chronicle の現在地
 
-最終更新: 2026-11-19 / 対象: `src/App.jsx` 9,166行
+最終更新: 2026-11-23 / 対象: `src/App.jsx` 10,118行
 
 このファイルは「いまコードがどうなっているか」の地図。
 「どう直すか」は [REFACTOR_PLAN.md](REFACTOR_PLAN.md)、「ゲームのルール」は [GAME_SPEC.md](GAME_SPEC.md) に分けてある。
@@ -14,7 +14,7 @@
 
 | ファイル | 役割 | 行数 |
 |---|---|---|
-| `src/App.jsx` | データ定義・ゲームエンジン・UI の全部 | **9,115** |
+| `src/App.jsx` | データ定義・ゲームエンジン・UI の全部 | **10,118** |
 | `src/lib/format.js` | `formatYen` / `formatNum`（テスト済み） | 28 |
 | `src/lib/purchase.js` | `calcBulkPurchase` / `calcBulkSingleResource`（テスト済み） | 43 |
 | `src/main.tsx` | `StrictMode` でマウントするだけ | 11 |
@@ -40,35 +40,35 @@ React のフック使用状況（App.jsx 全体）:
 > ここの数字は「だいたいこのへん」の目安として使う。
 
 ```
-src/App.jsx  (9,115行)
-├─ 1–30        import（React + lucide-react 26個 + ./lib/format + ./lib/purchase）
+src/App.jsx  (10,118行)
+├─ 1–40        import（React + lucide-react + ./lib/* + ./data/*）
+│               ※ lib: format / purchase / growth / softcap
+│               ※ data: romanceEvents / flavorText / generationUnlocks
 │
-├─ 32–2,056    【データ層】定数 30個
+├─ 42–2,250    【データ層】定数
 │               ※ モジュールスコープ。App の外にある = そのまま切り出せる
+│               ※ LOCAL_CLUB_REQ_CAT / MAX_LEGACY_LV_SUM を追加（v0.35）
 │
-├─ 2,060–2,537 【純粋ユーティリティ】関数 16個
-│               ※ ここも App の外。切り出し最優先
-│               ※ formatYen/formatNum/calcBulk* は src/lib/ へ分離済み
+├─ 2,255–2,673 【純粋ユーティリティ】
+│   ├─ 2,255  computeIndividualStatCaps（位置引数19個 / ageCapMult 込み）
+│   ├─ 2,480  applyStatGrowth
+│   └─ 2,511  getDrillEffectiveStats（UI予測。実挙動と同じ式を二重に持つ）
 │
-├─ 2,540–2,556 MiniBar（唯一のサブコンポーネント）
+├─ 2,675      MiniBar（唯一のサブコンポーネント）
 │
-└─ 2,558–9,115 export default function App()   ← 6,550行の単一コンポーネント
-   ├─ 2,560        createInitialState（位置引数 22〜26個）
-   ├─ 2,937–3,160  セーブ/ロード・マイグレーション（state 初期化は 2,971）
-   ├─ 3,111付近    UI state 18個 + useRef ×2
-   ├─ 3,144–3,172  useEffect ×3（速度ガード / pendingModal 取り出し / オートセーブ）
-   ├─ 3,203–4,201  【エンジン】
-   │   ├─ 3,203  addZoneCharge
-   │   ├─ 3,232  calculateLegacyGain
-   │   ├─ 3,284  checkGenomeAwakening
-   │   ├─ 3,433  executeDrillInternal
-   │   ├─ 3,688  simulateAutoMatch
-   │   └─ 4,157  triggerRandomLifeEvent
-   ├─ 4,202–5,012  advanceOneMonth（810行の単一関数）
-   ├─ 5,013–5,082  メインゲームループ（setInterval）
-   ├─ 5,083–6,445  UIハンドラ 約40個（進路選択の確定は 6,100）
-   ├─ 6,446–6,606  派生値 約60個（毎レンダー再計算 / useMemo なし）
-   └─ 6,608–9,115  JSX（2,500行）
+└─ 2,726–10,118  export default function App()
+   ├─ 2,728      createInitialState
+   ├─ 3,459      addZoneCharge
+   ├─ 3,488      calculateLegacyGain
+   ├─ 3,568      checkGenomeAwakening（ED達成で pendingEnding を立てる）
+   ├─ 3,734      executeDrillInternal（成長倍率にソフトキャップ）
+   ├─ 3,993      simulateAutoMatch（試合戦力にソフトキャップ / 1周目×0.42）
+   ├─ 4,497      triggerRandomLifeEvent
+   ├─ 4,542–     advanceOneMonth（自動購入・加齢・引退判定）
+   ├─             メインゲームループ（setInterval）
+   ├─             UIハンドラ（doRomanceEvent / selectProtege / upgradeLocalClubTier …）
+   ├─             派生値（毎レンダー再計算 / useMemo なし）
+   └─             JSX（タブ・モーダル6種）
 ```
 
 ### データ層（30–2,054）の内訳
@@ -283,3 +283,41 @@ WASM 回避を試した名残。Vite 7 では不要:
 `.claude/launch.json`（`Desktop\Claud` 側）に `football-chronicle` が定義済み。
 `npm run dev --prefix <path>` では cwd が変わらず `vite.config.ts` を解決できないため、
 `cmd /c cd /d <path> && npm run dev` の形にしてある。
+
+---
+
+## v0.35 で増えたもの（2026-11-23）
+
+### `src/lib/`
+
+| ファイル | 役割 |
+|---|---|
+| `softcap.js` | 乗算で積み上がる倍率の対数圧縮。**新しい倍率を足すときは必ずこの内側に入れる** |
+| `growth.js` | `overCapRatio` に加えて `overCapDiminishing`（上限超過の指数減衰）|
+
+### `src/data/`
+
+| ファイル | 役割 |
+|---|---|
+| `flavorText.js` | エンディング7種 / タイムリープ（周回帯で5パターン）/ 上位転生（段階別4パターン）/ 宿敵の初対面 |
+| `romanceEvents.js` | 恋愛の段階定義と、相手4人 × 節目5段階の本文 |
+| `generationUnlocks.js` | 周回ごとの機能解放（v0.3）|
+
+### state に増えたキー
+
+| キー | 意味 |
+|---|---|
+| `pendingEnding` | エンディング／上位転生の本文モーダル。立っている間はゲームループが止まる |
+| `lastRomanceMonth` | 恋愛の月1回制限 |
+| `lastProtegeMonth` | 師弟特訓の月1回制限 |
+| `patronPaid` | 15歳の支援金を受け取ったか |
+
+### 「同じ式を二重に持っている」箇所（触るときは両方）
+
+| 実挙動 | UI予測 |
+|---|---|
+| `executeDrillInternal` の `rawMult` → `softcap` | `getDrillEffectiveStats` の `rawGlobalMult` → `softcap` |
+| `applyStatGrowth` の `overCapDiminishing` | `getDrillEffectiveStats` の `overCapDiminishing` |
+| `doRomanceEvent` | `advanceOneMonth` 内の自動消化（秘書Lv2）|
+
+片方だけ直すと「表示と実挙動がズレる」。実際にバランス調整で踏んでいる。

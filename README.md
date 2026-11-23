@@ -29,6 +29,25 @@ npm run test:watch # テストを監視実行
 | ゲームのルール・計算式 | [docs/GAME_SPEC.md](docs/GAME_SPEC.md) |
 | リファクタの順序 | [docs/REFACTOR_PLAN.md](docs/REFACTOR_PLAN.md) |
 | テスト・CI・シミュレーション | [docs/AUTOMATION.md](docs/AUTOMATION.md) |
+| ゲームデザインの決定と理由 | [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) |
+| バランス調整の実測ログ | [docs/BALANCE_LOG.md](docs/BALANCE_LOG.md) |
+| 次に何をやるか | [roadmap.html](roadmap.html) |
+
+---
+
+## 計測
+
+```powershell
+npm run measure    # 周回カーブ（8周ぶん / 約1分）
+npx vitest run --config vitest.measure.config.js src/measure/aging.measure.jsx
+                   # 加齢カーブ（1年ごとの上限・能力値・カテゴリ）
+```
+
+`MEASURE_GENERATIONS` で周回数、`MEASURE_ASC_STRATEGY` で結晶の買い方
+（`cap` / `growth` / `life` / `harvest`）を変えられる。
+
+> ⚠️ いまの計測は結晶強化を4種類しか買わないので、**実プレイの「要素を全部
+> 揃えた状態」を再現できない**。ソフトキャップが効いているかはこれでは分からない。
 
 ---
 
