@@ -38,6 +38,7 @@ import {
   ROMANCE_FLAVOR,
   reachedMilestone
 } from './data/romanceEvents.js';
+import { ENDING_FLAVOR, ascensionFlavor, timeLeapFlavor } from './data/flavorText.js';
 import { GENERATION_UNLOCKS, isFeatureUnlocked, newlyUnlocked } from './data/generationUnlocks.js';
 
 const SAVE_KEY = 'football_chronicle_v0_12_save';
@@ -780,6 +781,15 @@ const POS_MILESTONE_EVENTS = [
 ];
 
 // --- 蒼空FC・5人の同僚選手育成定義（円単位コスト） ---
+// 地元クラブを昇格させるのに必要な、自分の到達カテゴリ。
+//
+// 本人指摘（2026-11-23）:
+//   「地元クラブがいとも簡単に世界的クラブになってしまうのも違和感」
+//
+// 金と戦術Ptだけで Lv7（世界王者クラブ）まで買えてしまうのがおかしい。
+// 地元のクラブが世界に出ていくには、連れていく選手が世界に居る必要がある。
+const LOCAL_CLUB_REQ_CAT = { 2: 12, 3: 13, 4: 13, 5: 14, 6: 15, 7: 16 };
+
 const LOCAL_CLUB_MATES = [
   {
     id: 'mate_gk',
@@ -1946,6 +1956,24 @@ const LEGACY_UPGRADES_DEF = [
     desc: '周回開始直後からAUTOが自動ONになり、さらにLvごとに毎月のAUTO連続実行回数が+1回ずつ重複加速する！'
   },
   {
+    id: 'market_memory',
+    name: '相場と勝ち馬の記憶',
+    baseCost: 26,
+    growth: 1.5,
+    maxLv: 12,
+    short: '初期資金 ×1.8/Lv（倍率で効く）＆ 初期戦術Pt +15/Lv',
+    desc: 'どの馬が勝ち、どの銘柄が跳ねたか。何度も同じ年を繰り返した人間にとって、それは予想ではなく記憶である。'
+  },
+  {
+    id: 'patron_memory',
+    name: '恩人の顔を覚えている',
+    baseCost: 34,
+    growth: 1.62,
+    maxLv: 10,
+    short: '15歳の春に支援金が一括で入る（Lvで大きくなる）',
+    desc: '前の人生で世話になった人間を、まだ誰も知らないうちから訪ねられる。向こうは覚えていないが、こちらは覚えている。'
+  },
+  {
     id: 'charm_vessel',
     name: '絆の器（お守り枠拡張）',
     baseCost: 50,
@@ -1956,8 +1984,33 @@ const LEGACY_UPGRADES_DEF = [
   }
 ];
 
+// 結晶強化をすべて最大まで買ったときの Lv 合計。
+// 上位転生の解放条件がこれを超えると、何をしても次に進めなくなる。
+// 本人報告（2026-11-23）:
+//   「第一転生の強化アイテムの総数が足りず、すべてマックスに上げても
+//     第二転生ができない状態になっている」
+const MAX_LEGACY_LV_SUM = LEGACY_UPGRADES_DEF.reduce((a, u) => a + (u.maxLv || 0), 0);
+
 // --- 上位転生（第2〜第5段階）聖杯アップグレード定義（8倍速追加！） ---
 const ASCENSION_UPGRADES_DEF = [
+  {
+    id: 'divine_legacy_agent',
+    name: '【神域自動化】輪廻の代理人（結晶強化を自動購入）',
+    baseCost: 40,
+    growth: 1.0,
+    maxLv: 1,
+    short: '買えば即発動！継承結晶が貯まるたび、買える強化を自動で買う',
+    desc: '何十回も同じ買い物を繰り返した記憶が、意思を持ったように先回りして動く。結晶が貯まるそばから強化へ変わっていく。'
+  },
+  {
+    id: 'divine_breakthrough_agent',
+    name: '【神域自動化】覚醒の代理人（ブレイクスルーを自動購入）',
+    baseCost: 55,
+    growth: 1.0,
+    maxLv: 1,
+    short: '買えば即発動！資金と戦術Ptが足りる永続ブレイクスルーを自動習得',
+    desc: '何を覚えるべきかはもう考えるまでもない。条件が揃った瞬間に、体の方が先に覚えている。'
+  },
   {
     id: 'speed_8x',
     name: '【超神速】極限時間加速（8x速度解放）',
@@ -2753,6 +2806,11 @@ export default function App() {
       const bodyLv = legacyUpgrades.iron_body || 0;
       const mindLv = legacyUpgrades.sharp_mind || 0;
       const connLv = legacyUpgrades.club_connection || 0;
+      // 初期資金は加算（コネ）と乗算（相場の記憶）の二段構え。
+      // 本人の要望（2026-11-23）:
+      //   「競馬の記憶以外にももっと初期資金が豊富になる手段用意したい」
+      const marketLv = legacyUpgrades.market_memory || 0;
+      const startMoneyMult = Math.pow(1.8, marketLv);
       const memLv = legacyUpgrades.tactical_memory || 0;
       const growthMemLv = legacyUpgrades.growth_memory || 0;
 
@@ -2991,8 +3049,8 @@ export default function App() {
         maxStamina: initStamina,
         mental: initMental,
         maxMental: initMental,
-        money: 2000 + connLv * 6000 + achMoney,
-        tactics: 5 + connLv * 20,
+        money: Math.floor((2000 + connLv * 6000) * startMoneyMult) + achMoney,
+        tactics: 5 + connLv * 20 + marketLv * 15,
         fans: 0,
 
         stats: {
@@ -3486,7 +3544,24 @@ export default function App() {
     // 主要項が負になり、聖杯が5個しか出ていなかった（docs/BALANCE_LOG.md）。
     const catBonus = Math.max(0, (s.categoryId || 0) - 8) * 4;
     const genBonus = Math.floor((s.totalGenerations || s.generation || 1) / 2);
-    return Math.max(3, Math.floor(legLvSum / 2) + catBonus + genBonus);
+
+    // ここまでは「条件を満たした時点」で決まる値なので、
+    // 条件を満たした瞬間に転生するのが常に最適になっていた。
+    // 本人指摘（2026-11-23）:
+    //   「2次転生は鍛えてからしてももらえる聖杯の数は変わらない？
+    //     それだと放置してから転生したときのメリットが薄くなるな。
+    //     転生条件は今のまま、その転生周回内で鍛えているポイントによって、
+    //     少なくてもいいので聖杯もらえる数が増えるといい」
+    //
+    // その周回で実際に積んだもの（到達ピーク・試合数・得点関与）を足す。
+    // 指数を小さくしてあるので、粘れば増えるが、粘りすぎても支配的にはならない。
+    const peak = Math.max(s.peakRatingReached || 0, getTotalRating(s));
+    const runPeak = Math.pow(Math.max(1, peak), 0.42);
+    const runMatches = Math.pow(Math.max(0, s.matchesPlayed || 0), 0.4);
+    const runGoals = Math.pow(Math.max(0, (s.goals || 0) + (s.assists || 0) * 0.6), 0.38);
+    const runBonus = Math.floor(runPeak + runMatches + runGoals);
+
+    return Math.max(3, Math.floor(legLvSum / 2) + catBonus + genBonus + runBonus);
   }, []);
 
   // --- ゲノム覚醒・進化・イベント・エンディング・試練チェック ---
@@ -3593,6 +3668,23 @@ export default function App() {
         if (ed.check(s)) {
           s.unlockedEndings.push(ed.id);
           addLogMsg(s, `📖【人生エンディング達成】${ed.code}「${ed.name}」解放！（${ed.rewardText}）`, 'levelup');
+          // エンディングは本文を読ませる。300字ある文章を
+          // ステータス欄の2行に押し込んでも誰も読まない。
+          const writer = ENDING_FLAVOR[ed.id];
+          if (writer && !s.pendingEnding) {
+            try {
+              s.pendingEnding = {
+                id: ed.id,
+                code: `📖 ${ed.code}`,
+                name: `「${ed.name}」`,
+                sub: '人生のエンディングを一つ見届けた',
+                reward: ed.rewardText,
+                text: writer(s)
+              };
+            } catch {
+              s.pendingEnding = null;
+            }
+          }
           if (!suppressToast) {
             pushToast(`📖 ${ed.code}: ${ed.name}`, ed.rewardText, 'amber');
           }
@@ -4504,6 +4596,26 @@ export default function App() {
         }
       }
 
+      // 「恩人の顔を覚えている」の支援金。15歳の春に一度だけ。
+      //
+      // 子どものうちは小遣い程度しか動かせない（docs/GAME_DESIGN.md §3）ので、
+      // 初期資金の強化だけだと、使える頃にはもう試合の賞金のほうが大きい。
+      // 15歳という「道具が効き始める時期」に、まとまった額が入る形にする。
+      if (newState.age === 15 && !newState.patronPaid) {
+        const patronLv = newState.legacyUpgrades?.patron_memory || 0;
+        if (patronLv > 0) {
+          const gain = Math.floor(60000 * Math.pow(2.3, patronLv - 1));
+          newState.money += gain;
+          newState.patronPaid = true;
+          const pMsg = `🤝【恩人の訪問】前の人生で世話になった人物を訪ねた。向こうは初対面のつもりでいる。支援金 ${formatYen(gain)} を受け取った。`;
+          newState.storyFlavor = pMsg;
+          addLogMsg(newState, pMsg, 'story');
+          if (!suppressToast) {
+            pushToast('🤝 支援金', formatYen(gain), 'emerald');
+          }
+        }
+      }
+
       // 誕生月ごとに年齢上限リミッター再計算
       if (birthdayTriggered) {
         newState.statCaps = computeIndividualStatCaps(
@@ -4581,6 +4693,60 @@ export default function App() {
       const { effMaxStam, effMaxMent } = getEffectiveMaxResources(newState);
       newState.stamina = Number(Math.min(effMaxStam, newState.stamina + stamRec).toFixed(2));
       newState.mental = Number(Math.min(effMaxMent, newState.mental + mentRec).toFixed(2));
+
+      // QoL自動化⓪：輪廻の代理人（継承結晶の強化を自動購入）
+      //
+      // 本人の要望（2026-11-23）:
+      //   「二次転生に永続ブレイクスルーや1次転生結晶商品を自動購入するアイテムも追加するか。
+      //     強くするほど便利になり、さらに新しい要素が解放される」
+      //
+      // 安いものから順に、買えるものを毎月1つだけ。
+      // 一気に全部買わないのは、何を買ったかがログで追えなくなるため。
+      if ((newState.ascensionUpgrades?.divine_legacy_agent || 0) >= 1) {
+        const buyable = LEGACY_UPGRADES_DEF.filter((upg) => {
+          if (upg.requiresId && (newState.legacyUpgrades?.[upg.requiresId] || 0) < 1) return false;
+          const curLv = newState.legacyUpgrades?.[upg.id] || 0;
+          if (curLv >= upg.maxLv) return false;
+          const cost = Math.floor(upg.baseCost * Math.pow(upg.growth, curLv));
+          return (newState.legacyPoints || 0) >= cost;
+        });
+        if (buyable.length > 0) {
+          const cheapest = buyable.reduce((best, upg) => {
+            const c = Math.floor(upg.baseCost * Math.pow(upg.growth, newState.legacyUpgrades?.[upg.id] || 0));
+            const bc = Math.floor(best.baseCost * Math.pow(best.growth, newState.legacyUpgrades?.[best.id] || 0));
+            return c < bc ? upg : best;
+          }, buyable[0]);
+          const curLv = newState.legacyUpgrades?.[cheapest.id] || 0;
+          const cost = Math.floor(cheapest.baseCost * Math.pow(cheapest.growth, curLv));
+          newState.legacyPoints = (newState.legacyPoints || 0) - cost;
+          newState.legacyUpgrades = { ...(newState.legacyUpgrades || {}), [cheapest.id]: curLv + 1 };
+          addLogMsg(newState, `♻️【輪廻の代理人】「${cheapest.name}」Lv.${curLv + 1} を自動購入（💎-${cost}）`, 'info');
+        }
+      }
+
+      // QoL自動化⓪b：覚醒の代理人（永続ブレイクスルーを自動購入）
+      if (
+        (newState.ascensionUpgrades?.divine_breakthrough_agent || 0) >= 1 &&
+        newState.activeChallenge !== 'ch_no_memory' &&
+        newState.activeChallenge !== 'ch_ascetic_god'
+      ) {
+        for (const bt of BREAKTHROUGHS_DEF) {
+          if (newState.breakthroughs?.[bt.id]) continue;
+          if (newState.money < bt.costMoney || newState.tactics < bt.costTactics) continue;
+          newState.money -= bt.costMoney;
+          newState.tactics = Number((newState.tactics - bt.costTactics).toFixed(1));
+          newState.breakthroughs = { ...(newState.breakthroughs || {}), [bt.id]: true };
+          // 購入ハンドラ側と同じ副作用を入れる。ここだけ抜けると
+          // 「買ったのにAUTOが増えない」という食い違いが出る
+          if (bt.id === 'smart_auto_all') {
+            newState.unlocks = { ...newState.unlocks, autoFeature: true };
+            newState.maxAutoSlots = 5;
+            newState.autoActions = ALL_DRILL_IDS.filter((id) => newState.unlocks[id]);
+          }
+          addLogMsg(newState, `✨【覚醒の代理人】永続ブレイクスルー「${bt.name}」を自動習得`, 'levelup');
+          break;
+        }
+      }
 
       // QoL自動化①：専属マネージャー（道具自動購入）
       if (
@@ -4741,8 +4907,7 @@ export default function App() {
             if (milestone) {
               const writer = ROMANCE_FLAVOR[pType]?.[milestone.key];
               if (writer) {
-                const text = `【${milestone.label}】
-` + writer(newState, pObj.name);
+                const text = `【${milestone.label}】\n` + writer(newState, pObj.name);
                 newState.storyFlavor = text;
                 addLogMsg(newState, text, 'story');
               }
@@ -5312,11 +5477,18 @@ export default function App() {
           'story'
         );
 
-        const storyParas = [
-          `第${genNum}周目のキャリアを全うした「${newState.playerName}」（最終所属: ${finalCatName} / ピーク総合力 ${formatNum(newState.peakRatingReached, 1)}）。`,
-          `${newState.age}歳で${retireReason}スパイクを置き、数多のプレースタイルと知識・記憶を次の輪廻へ託す。`,
-          '肉体は5歳へ戻っても、頭の中の知識と魂の遺伝子は決して消えない――再び伝説を紡ごう！'
-        ];
+        // 周回数に応じて語りが変わる（src/data/flavorText.js）。
+        // 同じ文章を何十回も読ませないためでもあるが、
+        // 「何度もやり直している人間がどう変質していくか」そのものが物語になる。
+        let storyParas;
+        try {
+          storyParas = timeLeapFlavor(newState, calculateLegacyGain(newState)).split('\n');
+        } catch {
+          storyParas = [
+            `第${genNum}周目のキャリアを全うした「${newState.playerName}」（最終所属: ${finalCatName} / ピーク総合力 ${formatNum(newState.peakRatingReached, 1)}）。`,
+            `${newState.age}歳で${retireReason}スパイクを置き、数多のプレースタイルと知識・記憶を次の輪廻へ託す。`
+          ];
+        }
 
         return {
           type: 'truck',
@@ -5352,6 +5524,8 @@ export default function App() {
         if (prev.isRetired) return prev;
         // 新機能の解放モーダルを読んでいる間も止める
         if (prev.pendingUnlocks) return prev;
+        // エンディングの本文を読んでいる間も止める
+        if (prev.pendingEnding) return prev;
         // モーダル待ちの間は時間を進めない。
         // 依存配列（careerChoiceModal 等）だけに頼ると、モーダルを開く
         // useEffect が走るまでの1ティック分で次の月が進み、せっかく積んだ
@@ -5681,7 +5855,11 @@ export default function App() {
     setGameState((prev) => {
       if (prev.activeChallenge === 'ch_solo_carry' || prev.activeChallenge === 'ch_ascetic_god') return prev;
       const curLv = prev.localClubLv || 1;
-      const maxLv = 7;
+      // 自分が到達したカテゴリで、上げられる上限が決まる
+      let maxLv = 1;
+      for (let lv = 2; lv <= 7; lv++) {
+        if ((prev.categoryId || 0) >= LOCAL_CLUB_REQ_CAT[lv]) maxLv = lv;
+      }
       if (curLv >= maxLv) return prev;
       const calc = calcBulkPurchase(curLv, maxLv, buyAmount, prev.money, prev.tactics, 35000, 140, 2.25);
       if (calc.count === 0) return prev;
@@ -6595,6 +6773,23 @@ export default function App() {
         const nextAscCount = (workingPrev.ascensionCount || 0) + 1;
         // 第二転生・第三転生時は「タイムリープの原点回帰」として習慣熟練も深くリセットしつつ聖杯で超成長
         const isSecondPlusAsc = nextAscCount >= 2;
+
+        // 上位転生は「差し出して、代わりに上の段階へ行く」ための転生。
+        // 本人指摘（2026-11-23）:
+        //   「2次転生してすぐ1次転生ができるゲームバランスはつまらない。
+        //     なんとかして2次転生後はポンコツ状態にして、
+        //     もう一度弱くなったけどさらに強くなるため頑張る！ってノリにしたい」
+        //
+        // 継承結晶はもともと失う設計だったが、ゲノムをそのまま持ち越していたため
+        // 転生直後から戦力が残っていた。ゲノムと融合ゲノムも手放す。
+        // どちらも能力値から自動で再解放される仕組みなので、
+        // 鍛え直せば戻る＝「もう一度積み上げる」対象になる。
+        //
+        // 残すもの: 隠しゲノム・進路アーカイブ・ED・試練・チャレンジ達成・
+        //           弟子と恋人の図鑑記録・特性の解放記録
+        const wipedGenomes = {};
+        const wipedFused = [];
+
         const nextSt = createInitialState(
           nextGenNum,
           0,
@@ -6602,8 +6797,8 @@ export default function App() {
           [hofEntry, ...(workingPrev.hallOfFame || [])].slice(0, 20),
           workingPrev.achievements,
           profile,
-          workingPrev.genomes,
-          workingPrev.fusedGenomes,
+          wipedGenomes,
+          wipedFused,
           workingPrev.archivedGenomes,
           workingPrev.secretGenomes,
           {
@@ -6644,17 +6839,19 @@ export default function App() {
           workingPrev.unlockedCharms,
           workingPrev.equippedCharms,
           {
+            // イベントを見た記録は残すが、そこで得た上限ボーナスは手放す。
+            // クラブも、国際タイトルの蓄積も一から。
             posEventsDone: [...(workingPrev.posEventsDone || [])],
-            posEventCaps: { ...(workingPrev.posEventCaps || {}) },
+            posEventCaps: {},
             rivalPerksUnlocked: [...(workingPrev.rivalPerksUnlocked || [])],
-            rivalPerkCaps: { ...(workingPrev.rivalPerkCaps || {}) },
-            localClubLv: workingPrev.localClubLv || 1,
-            clubMates: { ...(workingPrev.clubMates || {}) },
-            clubFacilities: { ...(workingPrev.clubFacilities || {}) },
+            rivalPerkCaps: {},
+            localClubLv: 1,
+            clubMates: {},
+            clubFacilities: {},
             rivalCoopUnlocked: Boolean(workingPrev.rivalCoopUnlocked),
             unlockedTraits: [...(workingPrev.unlockedTraits || [])],
-            equippedTraits: [...(workingPrev.equippedTraits || [])],
-            intlCupsWon: workingPrev.intlCupsWon || 0,
+            equippedTraits: [],
+            intlCupsWon: 0,
             protegeData: workingPrev.protege || { archetypeId: null, bondLv: 1 },
             protegeBonds: { ...(workingPrev.protegeBonds || {}) },
             partnerRecords: { ...(workingPrev.partnerRecords || {}) },
@@ -6673,16 +6870,25 @@ export default function App() {
           null
         );
 
-        const ascFlavor =
-          nextAscCount === 1
-            ? '【第2段階・輪廻超越】時空の壁を超え、超越の聖杯を手にした！ただし肉体は再び5歳児――頭脳は大人のまま、一から身体を鍛え直そう！'
-            : nextAscCount === 2
-              ? '【第3段階・星辰輪廻】星々の記憶を刻み、練習習慣すらリセットして原点へ回帰！神童としての新たな伝説が始まる！'
-              : '【高次元輪廻発動】さらなる高みへ魂が昇華した！5歳の小さな体から再び世界を震撼させよう！';
+        let ascFlavor;
+        try {
+          ascFlavor = ascensionFlavor(workingPrev, nextAscCount, gainHolyPts);
+        } catch {
+          ascFlavor = `【第${nextAscCount + 1}段階転生】超越の聖杯 ${gainHolyPts} を得て、再び5歳の春へ。`;
+        }
 
         return {
           ...nextSt,
-          storyFlavor: ascFlavor,
+          storyFlavor: `【第${nextAscCount + 1}段階転生】超越の聖杯 🏆+${gainHolyPts} を得て、再び5歳の春へ。`,
+          // 本文はモーダルで読ませる。ステータス欄は2行しか出ない
+          pendingEnding: {
+            id: `asc_${nextAscCount}`,
+            code: `👑 第${nextAscCount + 1}段階転生`,
+            name: '',
+            sub: `超越の聖杯 🏆+${gainHolyPts}`,
+            reward: '',
+            text: ascFlavor
+          },
           tutorialSeenVersion: workingPrev.tutorialSeenVersion || CURRENT_TUTORIAL_VERSION
         };
       });
@@ -7022,7 +7228,9 @@ export default function App() {
   // 13周目に欧州中堅 / Lv33 なので、旧条件（Lv60・cat12）だと
   // Lv60 到達が27周目あたりになり、意図より15周ぶん遅かった。
   const canUnlockAscension = ascCount >= 1 || legLvSum >= 24 || (gameState.totalGenerations || gameState.generation) >= 5;
-  const ascReqCrystalLv = 28 + ascCount * 12;
+  // 段階が上がるごとに要求も上がるが、買える上限（MAX_LEGACY_LV_SUM）の
+  // 55% で頭打ちにする。超えると到達不能になって詰む。
+  const ascReqCrystalLv = Math.min(Math.floor(MAX_LEGACY_LV_SUM * 0.55), 28 + ascCount * 12);
   const ascReqCatId = Math.min(18, 11 + ascCount);
   const canAscendNow = legLvSum >= ascReqCrystalLv && gameState.categoryId >= ascReqCatId;
   const ascensionGainPreview = calculateAscensionGain(gameState);
@@ -7213,9 +7421,9 @@ ${activeChObj.rewardText}`}
           <button
             onClick={() => setTutorialModalOpen(true)}
             className="px-1.5 py-0.5 text-[9.5px] font-mono bg-indigo-950 border border-indigo-600 text-indigo-200 hover:text-white cursor-pointer"
-            title="v0.2 ガイドを表示"
+            title="v0.35 ガイドを表示"
           >
-            v0.2
+            v0.35
           </button>
           <button
             onClick={() => {
@@ -8408,10 +8616,15 @@ ${activeChObj.rewardText}`}
                           </span>
                           {(() => {
                             const cLv = gameState.localClubLv || 1;
+                            let allowedMax = 1;
+                            for (let lv = 2; lv <= 7; lv++) {
+                              if ((gameState.categoryId || 0) >= LOCAL_CLUB_REQ_CAT[lv]) allowedMax = lv;
+                            }
                             const isMax = cLv >= 7;
+                            const isCatLocked = !isMax && cLv >= allowedMax;
                             const calc = calcBulkPurchase(
                               cLv,
-                              7,
+                              allowedMax,
                               buyAmount,
                               gameState.money,
                               gameState.tactics,
@@ -8424,11 +8637,13 @@ ${activeChObj.rewardText}`}
                             return (
                               <button
                                 onClick={upgradeLocalClubTier}
-                                disabled={isSoloDisabledByCh || isMax || calc.count === 0}
+                                disabled={isSoloDisabledByCh || isMax || isCatLocked || calc.count === 0}
                                 className="px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-45 text-white font-mono text-[8.5px] font-bold cursor-pointer"
                               >
                                 {isMax
                                   ? '世界王者クラブMAX'
+                                  : isCatLocked
+                                  ? `${CATEGORIES[LOCAL_CLUB_REQ_CAT[cLv + 1]].name}到達で昇格可`
                                   : calc.count > 1
                                     ? `クラブ昇格 +${calc.count}Lv (${formatYen(calc.totalG)}/${formatNum(calc.totalPt)}Pt)`
                                     : `クラブ昇格 Lv.${cLv}→${cLv + 1} (${formatYen(singleG)}/${formatNum(singlePt)}Pt)`}
@@ -9504,6 +9719,34 @@ ${activeChObj.rewardText}`}
               className="w-full py-2 bg-sky-700 hover:bg-sky-600 border border-sky-300 text-white font-bold text-xs cursor-pointer"
             >
               わかった
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ================= モーダル: エンディング／上位転生の本文 ================= */}
+      {gameState.pendingEnding && !creatorModal.open && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-2">
+          <div className="bg-slate-900 border border-amber-400 max-w-md w-full p-3.5 space-y-2.5 text-xs max-h-[88vh] overflow-y-auto">
+            <div className="border-b border-slate-800 pb-1.5">
+              <div className="font-bold text-sm text-amber-300">
+                {gameState.pendingEnding.code} {gameState.pendingEnding.name}
+              </div>
+              {gameState.pendingEnding.sub && (
+                <div className="text-[10px] text-slate-400">{gameState.pendingEnding.sub}</div>
+              )}
+            </div>
+            <div className="text-[11px] text-slate-200 leading-relaxed whitespace-pre-line bg-slate-950/70 border border-slate-800 p-2.5">
+              {gameState.pendingEnding.text}
+            </div>
+            {gameState.pendingEnding.reward && (
+              <div className="text-[10px] text-emerald-300">{gameState.pendingEnding.reward}</div>
+            )}
+            <button
+              onClick={() => setGameState((prev) => ({ ...prev, pendingEnding: null }))}
+              className="w-full py-2 bg-amber-700 hover:bg-amber-600 border border-amber-300 text-white font-bold text-xs cursor-pointer"
+            >
+              読み終えた
             </button>
           </div>
         </div>

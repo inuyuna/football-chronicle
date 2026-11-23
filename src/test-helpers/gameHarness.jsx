@@ -65,6 +65,19 @@ export async function closeUnlockModalIfOpen() {
   }
 }
 
+/**
+ * エンディング／上位転生の本文モーダルを閉じる。
+ * 開いている間はゲームループが止まる。
+ */
+export async function closeEndingModalIfOpen() {
+  const btn = screen.queryByRole('button', { name: /^読み終えた$/ });
+  if (btn) {
+    await act(async () => {
+      btn.click();
+    });
+  }
+}
+
 /** チュートリアルが出ていれば閉じる。開いている間はゲームループが止まる */
 export async function closeTutorialIfOpen() {
   const tutorial = screen.queryByRole('button', { name: /理解してプレイ開始/ });
@@ -126,6 +139,8 @@ export async function advanceUntilRetirement(maxMonths, pick, onYear) {
       await vi.advanceTimersByTimeAsync(1000);
     });
     if (readSave()?.pendingModal?.type === 'truck') return 'retired';
+    // エンディングの本文が出ると時間が止まるので、読んだことにして進める
+    await closeEndingModalIfOpen();
     await resolveCareerModalIfOpen(pick);
 
     // 1年に1度だけフックを呼ぶ。
