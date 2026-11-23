@@ -102,6 +102,7 @@ export async function startNewCareer() {
 
   await closeTutorialIfOpen();
   await closeUnlockModalIfOpen();
+  await closeEndingModalIfOpen();
   await resumeIfPaused();
 }
 
@@ -169,6 +170,7 @@ export async function doTimeLeap() {
   });
   await closeTutorialIfOpen();
   await closeUnlockModalIfOpen();
+  await closeEndingModalIfOpen();
   await resumeIfPaused();
 }
 
@@ -295,6 +297,8 @@ export async function tryAscension() {
   });
   await closeTutorialIfOpen();
   await closeUnlockModalIfOpen();
+  // 上位転生は本文モーダルが立つ。閉じないとゲームループが止まったままになる
+  await closeEndingModalIfOpen();
   await resumeIfPaused();
   return { ok: true, reason: '' };
 }
