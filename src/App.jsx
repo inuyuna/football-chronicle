@@ -261,46 +261,177 @@ const TACTICAL_STYLES = {
 };
 
 // --- 欧州4ヶ国リーグ＆宿敵スター選手（欧州リーグ熟練Lvが輪廻後も永続継承！） ---
+// 移籍先のリーグ。
+//
+// effects は試合と成長に掛かる倍率。1.0 が素。
+// 以前は france / italy / england だけが計算側に if で書かれていて、
+// 国を足しても効果が付かなかったので、データ側に持たせた。
+//
+// genomeId はその国に居続けると解放される専用ゲノム（BASE_GENOME_DEF）。
+// masteryStep 試合ぶん戦うごとに Lv が上がる。
 const EURO_COUNTRIES = {
   england: {
     id: 'england',
     name: 'イングランド1部',
     leagueName: 'プレミア・トップリーグ',
+    tier: 'major',
     rivalName: 'オスカー・ブラッドリー',
     rivalRating: 1150,
     rivalQuote: '「フィジカルとゴール数で俺に勝てる奴はいない！」',
     defeatQuote: '「バケモノめ…！この俺がパワーでも決定力でも完敗するとは…！」',
-    perkDesc: '賞金+12% / 身体・決定成長+6%'
+    perkDesc: '賞金+12% / 身体・決定成長+6%',
+    intro: '雨。土曜の午後3時。' +
+      'スタンドは試合開始の2時間前から埋まっていて、誰も傘をささない。\n' +
+      'ここでは、うまいより先に「逃げないこと」が評価される。',
+    effects: { money: 1.12, growthPhy: 1.06, growthSht: 1.06 },
+    genomeId: 'league_england_dna'
   },
   spain: {
     id: 'spain',
     name: 'スペイン1部',
     leagueName: 'ラ・プリメーラ・リーグ',
+    tier: 'major',
     rivalName: 'ハビエル・デルソル',
     rivalRating: 1220,
     rivalQuote: '「ボールを奪えるものなら奪ってみなよ。」',
     defeatQuote: '「信じられない…！俺のドリブルと戦術眼を完全に読み切るなんて…！」',
-    perkDesc: '技術・戦術成長+8% / 戦術Pt+15%'
+    perkDesc: '技術・戦術成長+8% / 戦術Pt+15%',
+    intro: '練習の初日、誰も${s.playerName}にボールをくれなかった。' +
+      '動き直して、要求して、角度を作って、ようやく一本。\n' +
+      'ここでは、止まっている選手は存在していないのと同じだ。',
+    effects: { growthTec: 1.08, growthIq: 1.08, tactics: 1.15 },
+    genomeId: 'league_spain_dna'
   },
   italy: {
     id: 'italy',
     name: 'イタリア1部',
     leagueName: 'セリエ・カルチョ1部',
+    tier: 'major',
     rivalName: 'マッテオ・リヴァーニ',
     rivalRating: 1180,
     rivalQuote: '「勝利への執念も筋肉の仕上がりも、俺が世界一だ！」',
     defeatQuote: '「クソッ…！最後まで走り抜く執念で俺を上回るとは認めるしかないな…！」',
-    perkDesc: '守備戦力+12% / 寿命・回復強化'
+    perkDesc: '守備戦力+12% / 寿命・回復強化',
+    intro: 'ミーティングが2時間を超えた。相手の右SBが疲れてくる時間帯の話だけで40分。\n' +
+      'ここでは、走る前に考えることのほうが多い。',
+    effects: { def: 1.12, growthIq: 1.04 },
+    genomeId: 'league_italy_dna'
   },
   france: {
     id: 'france',
     name: 'フランス1部',
     leagueName: 'リーグ・アン・エリート',
+    tier: 'major',
     rivalName: 'リュカ・ドゥフォール',
     rivalRating: 1120,
     rivalQuote: '「俺のスピードに追いつけるDFは地球上に存在しない！」',
     defeatQuote: '「なっ…！？ 俺のトップスピードに余裕で追いついて抜き去っただと…！？」',
-    perkDesc: 'ファン獲得+20% / 全試合戦力+6%'
+    perkDesc: 'ファン獲得+20% / 全試合戦力+6%',
+    intro: '18歳の選手が、当たり前の顔をしてスタメンに名前を書かれている。\n' +
+      'ここでは、実績より先に、速さと若さが信用される。',
+    effects: { fans: 1.2, power: 1.06 },
+    genomeId: 'league_france_dna'
+  },
+
+  // ===== ここから下は「4大」ではないリーグ =====
+  // 稼ぎは落ちるが、ここでしか手に入らないものがある。
+  netherlands: {
+    id: 'netherlands',
+    name: 'オランダ1部',
+    leagueName: 'エールディヴィジ',
+    tier: 'deep',
+    rivalName: 'ティム・ファン・オースト',
+    rivalRating: 980,
+    rivalQuote: '「ポジションを間違えている。10メートル右だ。」',
+    defeatQuote: '「……いまのは、こちらの配置が悪かった。認める。」',
+    perkDesc: '戦術眼成長+12% / 全上限+8（若手育成の国）',
+    intro: '監督が試合中、選手ではなくスペースを指さして怒鳴っている。\n' +
+      '「そこに立て」ではなく「そこを空けろ」。\n' +
+      'ここでは、ボールを持っていない時間のほうが評価される。',
+    effects: { growthIq: 1.12, growthTec: 1.05, money: 0.82 },
+    genomeId: 'league_dutch_dna'
+  },
+  portugal: {
+    id: 'portugal',
+    name: 'ポルトガル1部',
+    leagueName: 'プリメイラ・リーガ',
+    tier: 'deep',
+    rivalName: 'ルイ・カルネイロ',
+    rivalRating: 1010,
+    rivalQuote: '「1対1で抜けない選手に、この国で居場所はない。」',
+    defeatQuote: '「……抜かれた。それも、同じ形で三回だ。」',
+    perkDesc: '技術成長+14% / 決定戦力+8%',
+    intro: '石畳の広場で、子どもが素足でボールを扱っている。\n' +
+      '練習場でも同じことが起きている。ただ足にスパイクが付いているだけだ。\n' +
+      'ここでは、うまいことが前提で、その先が問われる。',
+    effects: { growthTec: 1.14, shoot: 1.08, money: 0.86 },
+    genomeId: 'league_portugal_dna'
+  },
+  belgium: {
+    id: 'belgium',
+    name: 'ベルギー1部',
+    leagueName: 'ジュピラー・プロ・リーグ',
+    tier: 'deep',
+    rivalName: 'マルク・デクレルク',
+    rivalRating: 930,
+    rivalQuote: '「ここは通過点だ。お前も、俺もな。」',
+    defeatQuote: '「……先に行ったか。まあいい、すぐ追いつく。」',
+    perkDesc: '移籍評価+20%（賞金とファンが同時に伸びる）',
+    intro: 'ロッカーで四か国語が飛び交っている。' +
+      '誰もここに骨を埋めるつもりがない。\n' +
+      'それを隠しもしないのに、試合では全員が走る。\n' +
+      'ここは踏み台で、踏み台であることに誰も傷ついていない。',
+    effects: { money: 1.08, fans: 1.12, power: 1.02 },
+    genomeId: 'league_belgium_dna'
+  },
+  turkey: {
+    id: 'turkey',
+    name: 'トルコ1部',
+    leagueName: 'スュペル・リグ',
+    tier: 'deep',
+    rivalName: 'エムレ・ヤルチュン',
+    rivalRating: 1050,
+    rivalQuote: '「この音の中で、お前は自分の声が聞こえるか？」',
+    defeatQuote: '「……静かにやりやがって。あの音の中で。」',
+    perkDesc: '精神上限+40 / ホームで全試合戦力+14%',
+    intro: 'キックオフ3時間前からスタジアムが揺れている。' +
+      '比喩ではなく、コンクリートが実際に揺れる。\n' +
+      '味方の声は聞こえない。相手の声も聞こえない。\n' +
+      'ここでは、耳ではなく背中で状況を読む。',
+    effects: { power: 1.14, growthPhy: 1.04, money: 0.9 },
+    genomeId: 'league_turkey_dna'
+  },
+  brazil: {
+    id: 'brazil',
+    name: 'ブラジル1部',
+    leagueName: 'カンピオナート・セリエA',
+    tier: 'deep',
+    rivalName: 'ジョアン・ペレイラ',
+    rivalRating: 1090,
+    rivalQuote: '「サッカーは仕事じゃない。遊びだ。本気の遊びだ。」',
+    defeatQuote: '「ハハッ。楽しかったよ。……次は負けないけどな。」',
+    perkDesc: '技術成長+10% / 閃き+1.5%（ジンガの国）',
+    intro: 'ピッチの状態が良くない。それを誰も問題にしていない。\n' +
+      '悪い芝で止まるボールを前提に、全員が体の向きを作っている。\n' +
+      'ここでは、環境に合わせて技術のほうを変える。',
+    effects: { growthTec: 1.1, crit: 0.015, money: 0.8 },
+    genomeId: 'league_brazil_dna'
+  },
+  argentina: {
+    id: 'argentina',
+    name: 'アルゼンチン1部',
+    leagueName: 'リーガ・プロフェシオナル',
+    tier: 'deep',
+    rivalName: 'ディエゴ・モリーナ',
+    rivalRating: 1070,
+    rivalQuote: '「負けたら家に帰れない。お前にその覚悟があるか？」',
+    defeatQuote: '「……今日はお前のほうが、失うものが大きかったらしいな。」',
+    perkDesc: '劣勢時の戦力+25% / 身体成長+8%',
+    intro: '試合前、相手のサポーターがバスを取り囲んでいた。\n' +
+      '味方のサポーターも、負ければ同じことをする。\n' +
+      'ここでは、勝ち負けが生活の一部で、誰もそれを異常だと思っていない。',
+    effects: { underdog: 0.25, growthPhy: 1.08, money: 0.84 },
+    genomeId: 'league_argentina_dna'
   }
 };
 
@@ -930,6 +1061,104 @@ const LOCAL_CLUB_FACILITIES = [
 
 // --- ベースゲノム定義（100周目バランスへ倍率調整＆7歳ジュニア進路3種＋子ども才能別ゲノム追加） ---
 const BASE_GENOME_DEF = [
+  // ===== リーグ専用ゲノム =====
+  //
+  // その国で戦い続けた人だけが身につける。
+  // 本人の要望（2026-11-26）:
+  //   「4大リーグ以外のディープなリーグも実装して、
+  //     そこにしかないゲノムやフレーバーテキストを入れていきたい」
+  //
+  // euroMastery[国] は、その国で1試合するごとに +1（勝てば +2）。
+  {
+    id: 'league_england_dna',
+    name: '雨中の泥仕合',
+    maxLv: 5,
+    condition: 'イングランドでの戦績',
+    effectDesc: (lv) => `身体成長 +${lv * 3}% / 劣勢時の戦力 +${lv * 3}%`,
+    getStatVal: (s) => (s.euroMastery || {}).england || 0,
+    step: 60
+  },
+  {
+    id: 'league_spain_dna',
+    name: '止まらない足',
+    maxLv: 5,
+    condition: 'スペインでの戦績',
+    effectDesc: (lv) => `技術成長 +${lv * 3}% / 戦術Pt +${lv * 4}%`,
+    getStatVal: (s) => (s.euroMastery || {}).spain || 0,
+    step: 60
+  },
+  {
+    id: 'league_italy_dna',
+    name: '二時間のミーティング',
+    maxLv: 5,
+    condition: 'イタリアでの戦績',
+    effectDesc: (lv) => `守備戦力 +${lv * 3.5}% / 戦術眼成長 +${lv * 3}%`,
+    getStatVal: (s) => (s.euroMastery || {}).italy || 0,
+    step: 60
+  },
+  {
+    id: 'league_france_dna',
+    name: '十八歳のスタメン',
+    maxLv: 5,
+    condition: 'フランスでの戦績',
+    effectDesc: (lv) => `20歳以下の成長 +${lv * 6}% / ファン +${lv * 5}%`,
+    getStatVal: (s) => (s.euroMastery || {}).france || 0,
+    step: 60
+  },
+  {
+    id: 'league_dutch_dna',
+    name: 'スペースを数える目',
+    maxLv: 5,
+    condition: 'オランダでの戦績',
+    effectDesc: (lv) => `戦術眼成長 +${lv * 5}% / 全上限 +${lv * 2}`,
+    getStatVal: (s) => (s.euroMastery || {}).netherlands || 0,
+    step: 50
+  },
+  {
+    id: 'league_portugal_dna',
+    name: '石畳のボールタッチ',
+    maxLv: 5,
+    condition: 'ポルトガルでの戦績',
+    effectDesc: (lv) => `技術成長 +${lv * 5}% / 決定戦力 +${lv * 3}%`,
+    getStatVal: (s) => (s.euroMastery || {}).portugal || 0,
+    step: 50
+  },
+  {
+    id: 'league_belgium_dna',
+    name: '四か国語のロッカー',
+    maxLv: 5,
+    condition: 'ベルギーでの戦績',
+    effectDesc: (lv) => `賞金 +${lv * 4}% / ファン +${lv * 4}%`,
+    getStatVal: (s) => (s.euroMastery || {}).belgium || 0,
+    step: 50
+  },
+  {
+    id: 'league_turkey_dna',
+    name: '背中で読む',
+    maxLv: 5,
+    condition: 'トルコでの戦績',
+    effectDesc: (lv) => `精神上限 +${lv * 10} / 全試合戦力 +${lv * 3}%`,
+    getStatVal: (s) => (s.euroMastery || {}).turkey || 0,
+    step: 50
+  },
+  {
+    id: 'league_brazil_dna',
+    name: '悪い芝のジンガ',
+    maxLv: 5,
+    condition: 'ブラジルでの戦績',
+    effectDesc: (lv) => `技術成長 +${lv * 4}% / 閃き +${lv * 0.5}%`,
+    getStatVal: (s) => (s.euroMastery || {}).brazil || 0,
+    step: 50
+  },
+  {
+    id: 'league_argentina_dna',
+    name: '負けたら帰れない',
+    maxLv: 5,
+    condition: 'アルゼンチンでの戦績',
+    effectDesc: (lv) => `劣勢時の戦力 +${lv * 6}% / 身体成長 +${lv * 3}%`,
+    getStatVal: (s) => (s.euroMastery || {}).argentina || 0,
+    step: 50
+  },
   // ===== 桁違いの到達点（周回を重ねた人だけが届く） =====
   //
   // 前線に固定する圧力を作らないよう、得点・アシスト・守備・出場・
@@ -2764,6 +2993,9 @@ const getDrillEffectiveStats = (s, drill) => {
   if (drill.primaryStat === 'tec') {
     specMult =
       (1 + (u.my_ball || 0) * 0.08) *
+      (1 + (g.league_spain_dna || 0) * 0.03) *
+      (1 + (g.league_portugal_dna || 0) * 0.05) *
+      (1 + (g.league_brazil_dna || 0) * 0.04) *
       (1 + (g.dribbler_dna || 0) * 0.025) *
       (1 + (g.maestro_dna || 0) * 0.025) *
       (1 + (g.jr_elite_dna || 0) * 0.04) *
@@ -2785,6 +3017,8 @@ const getDrillEffectiveStats = (s, drill) => {
       (1 + (g.overseas_wild_dna || 0) * 0.035) *
       (1 + (g.jfl_hungry_dna || 0) * 0.035) *
       (1 + (g.tall_body_dna || 0) * 0.03) *
+      (1 + (g.league_england_dna || 0) * 0.03) *
+      (1 + (g.league_argentina_dna || 0) * 0.03) *
       (pObj?.id === 'athlete' ? 1.07 : 1.0) *
       (fused.includes('fused_titan') ? 1.16 : 1.0) *
       ch2BodyTecMult;
@@ -2793,6 +3027,9 @@ const getDrillEffectiveStats = (s, drill) => {
       (1 + (u.tactics_note || 0) * 0.08) *
       (1 + (hb.chess || 0) * 0.05) *
       (1 + (g.maestro_dna || 0) * 0.025) *
+      (1 + (g.myth_creator_dna || 0) * 0.06) *
+      (1 + (g.league_italy_dna || 0) * 0.03) *
+      (1 + (g.league_dutch_dna || 0) * 0.05) *
       (1 + (g.university_iq_dna || 0) * 0.035) *
       (1 + (g.coach_mentor_dna || 0) * 0.03) *
       (1 + (g.j_elite_dna || 0) * 0.035) *
@@ -4033,6 +4270,7 @@ export default function App() {
           (u.tactics_note || 0) * 0.004 +
           (g.dribbler_dna || 0) * 0.006 +
           (g.myth_grind_dna || 0) * 0.004 +
+          (g.league_brazil_dna || 0) * 0.005 +
           (s.endlessInvest?.endless_ai || 0) * 0.003
       );
       const isCrit = nextRandom(s) < critChance;
@@ -4094,6 +4332,9 @@ export default function App() {
 
       const tecMult =
         (1 + (u.my_ball || 0) * 0.08) *
+        (1 + (g.league_spain_dna || 0) * 0.03) *
+        (1 + (g.league_portugal_dna || 0) * 0.05) *
+        (1 + (g.league_brazil_dna || 0) * 0.04) *
         (1 + (g.dribbler_dna || 0) * 0.025) *
         (1 + (g.maestro_dna || 0) * 0.025) *
         (1 + (g.jr_elite_dna || 0) * 0.04) *
@@ -4115,6 +4356,8 @@ export default function App() {
         (1 + (g.overseas_wild_dna || 0) * 0.035) *
         (1 + (g.jfl_hungry_dna || 0) * 0.035) *
         (1 + (g.tall_body_dna || 0) * 0.03) *
+        (1 + (g.league_england_dna || 0) * 0.03) *
+        (1 + (g.league_argentina_dna || 0) * 0.03) *
         (pObj?.id === 'athlete' ? 1.07 : 1.0) *
         (fused.includes('fused_titan') ? 1.16 : 1.0) *
         ch2BodyTecMult;
@@ -4124,6 +4367,8 @@ export default function App() {
         (1 + (hb.chess || 0) * 0.05) *
         (1 + (g.maestro_dna || 0) * 0.025) *
         (1 + (g.myth_creator_dna || 0) * 0.06) *
+        (1 + (g.league_italy_dna || 0) * 0.03) *
+        (1 + (g.league_dutch_dna || 0) * 0.05) *
         (1 + (g.university_iq_dna || 0) * 0.035) *
         (1 + (g.coach_mentor_dna || 0) * 0.03) *
         (1 + (g.j_elite_dna || 0) * 0.035) *
@@ -4164,6 +4409,7 @@ export default function App() {
         const ptMult =
           (1 + (s.legacyUpgrades?.sharp_mind || 0) * 0.14) *
           (1 + (g.myth_mentor_dna || 0) * 0.05) *
+          (1 + (g.league_spain_dna || 0) * 0.04) *
           (1 + (u.tactics_note || 0) * 0.1) *
           (1 + (hb.chess || 0) * 0.07) *
           (protegeObj?.id === 'soma' ? 1 + protegeBondLv * 0.06 : 1.0) *
@@ -4330,8 +4576,9 @@ export default function App() {
       const tacMasteryBonus = 1 + tacLv * 0.015;
       const euroLv = s.categoryId >= 12 ? Math.floor(((s.euroMastery || {})[s.euroCountry] || 0) / 10) : 0;
       const euroCountryObj = s.categoryId >= 12 ? EURO_COUNTRIES[s.euroCountry] : null;
-      const euroBonus =
-        euroCountryObj?.id === 'france' ? 1.06 + euroLv * 0.02 : euroLv > 0 ? 1 + euroLv * 0.02 : 1.0;
+      // リーグごとの効果はデータ側（EURO_COUNTRIES[].effects）に持たせてある
+      const euroEff = euroCountryObj?.effects || {};
+      const euroBonus = (euroEff.power || 1.0) * (1 + euroLv * 0.02);
 
       const protegeObj = s.protege?.archetypeId ? PROTEGE_ARCHETYPES[s.protege.archetypeId] : null;
       const protegeBondLv = s.protege?.bondLv || 0;
@@ -4346,6 +4593,7 @@ export default function App() {
         (1 + (g.allrounder_dna || 0) * 0.02) *
         (1 + (g.myth_winner_dna || 0) * 0.05) *
         (1 + (g.mono_master_dna || 0) * 0.04) *
+        (1 + (g.league_turkey_dna || 0) * 0.03) *
         (1 + (g.total_player_dna || 0) * 0.015) *
         (1 + (g.family_guardian_dna || 0) * 0.025) *
         (1 + (g.euro_cc_dna || 0) * 0.03) *
@@ -4391,6 +4639,9 @@ export default function App() {
         oppPower > rating
           ? 1 +
             (g.rival_crusher_dna || 0) * 0.035 +
+            (g.league_england_dna || 0) * 0.03 +
+            (g.league_argentina_dna || 0) * 0.06 +
+            (euroEff.underdog || 0) +
             Math.min(5, g.grassroots_dna || 0) * 0.04 +
             (fused.includes('fused_eternal_rival') ? 0.18 : 0) +
             (s.equippedCharms?.includes('charm_rival') ? 0.12 : 0) +
@@ -4404,6 +4655,8 @@ export default function App() {
         tStyle.shootMult *
         (1 + (g.striker_dna || 0) * 0.025) *
         (1 + (g.myth_scorer_dna || 0) * 0.06) *
+        (1 + (g.league_portugal_dna || 0) * 0.03) *
+        (euroEff.shoot || 1.0) *
         (1 + (g.giant_body_dna || 0) * 0.03) *
         (1 + (g.child_son_prodigy_dna || 0) * 0.04) *
         (1 + (hb.golf || 0) * 0.04) *
@@ -4436,10 +4689,11 @@ export default function App() {
         tStyle.defMult *
         (1 + (g.fortress_dna || 0) * 0.03) *
         (1 + (g.myth_ironwall_dna || 0) * 0.07) *
+        (1 + (g.league_italy_dna || 0) * 0.035) *
         (1 + (g.team_synergy_dna || 0) * 0.03) *
         (1 + (mateGk - 1) * 0.028 + (mateCb - 1) * 0.025) *
         (protegeObj?.id === 'raizo' ? 1 + protegeBondLv * 0.04 * cosmicProtegeMult : 1.0) *
-        (euroCountryObj?.id === 'italy' ? 1.12 : 1.0) *
+        (euroEff.def || 1.0) *
         (fused.includes('fused_aegis') ? 1.18 : 1.0) *
         (secret.includes('secret_small_giant') ? 1.24 : 1.0) *
         (traits.includes('trait_sb') ? 1.1 : 1.0) *
@@ -4570,7 +4824,8 @@ export default function App() {
         (1 + (g.local_club_dna || 0) * 0.05) *
         (1 + Math.min(5, g.euro_top_18_dna || 0) * 0.05) *
         (1 + (s.clubFacilities?.fac_scout || 0) * 0.05) *
-        (euroCountryObj?.id === 'england' ? 1.12 : 1.0) *
+        (euroEff.money || 1.0) *
+        (1 + (g.league_belgium_dna || 0) * 0.04) *
         (pObj?.id === 'announcer' ? 1.15 : pObj?.id === 'actress' ? 1.22 : 1.0) *
         (fused.includes('fused_soulmate_hobby') ? 1.18 : 1.0) *
         (s.equippedCharms?.includes('charm_cup') ? 1.18 : 1.0) *
@@ -4584,7 +4839,9 @@ export default function App() {
         (1 + (g.media_star_dna || 0) * 0.08) *
         (1 + (s.clubFacilities?.fac_scout || 0) * 0.08) *
         (protegeObj?.id === 'kanade' ? 1 + protegeBondLv * 0.06 : 1.0) *
-        (euroCountryObj?.id === 'france' ? 1.2 : 1.0) *
+        (euroEff.fans || 1.0) *
+        (1 + (g.league_belgium_dna || 0) * 0.04) *
+        (1 + (g.league_france_dna || 0) * 0.05) *
         (pObj?.id === 'announcer' ? 1.2 : 1.0) *
         getUnrivaledRank(s.age, rating, s.totalGenerations || s.generation).fanMult;
 
@@ -6871,11 +7128,26 @@ export default function App() {
     if (!EURO_COUNTRIES[cId]) return;
     setGameState((prev) => {
       if (prev.categoryId < 12 || prev.euroCountry === cId) return prev;
+      const c = EURO_COUNTRIES[cId];
+      // その国の空気を一度だけ見せる。
+      // 本人の要望（2026-11-26）:
+      //   「そこにしかないゲノムやフレーバーテキストを入れていきたい」
+      const introText = c.intro
+        ? `【${c.name}へ移籍】\n${c.intro.replace(/\$\{s\.playerName\}/g, prev.playerName)}`
+        : `✈️【欧州移籍】${c.name}（${c.leagueName}）へ移籍。`;
       const next = {
         ...prev,
         euroCountry: cId,
-        clubName: `${EURO_COUNTRIES[cId].name}・トップクラブ`,
-        storyFlavor: `✈️【欧州移籍】${EURO_COUNTRIES[cId].name}（${EURO_COUNTRIES[cId].leagueName}）へ電撃移籍！宿敵 ${EURO_COUNTRIES[cId].rivalName} との頂上決戦へ！`
+        clubName: `${c.name}・トップクラブ`,
+        storyFlavor: `✈️【移籍】${c.name}（${c.leagueName}）へ。宿敵は ${c.rivalName}。`,
+        pendingEnding: prev.pendingEnding || {
+          id: `league_${cId}`,
+          code: '✈️ 移籍',
+          name: c.name,
+          sub: `${c.leagueName} / ${c.perkDesc}`,
+          reward: '',
+          text: introText
+        }
       };
       addLogMsg(next, `✈️【欧州移籍】${EURO_COUNTRIES[cId].name}のクラブへ移籍！`, 'story');
       return next;
@@ -7843,6 +8115,26 @@ export default function App() {
     gameState.activeChallenge === 'ch_solo_carry' || gameState.activeChallenge === 'ch_ascetic_god';
 
   const activeBaseGenomes = BASE_GENOME_DEF.filter((d) => !(gameState.archivedGenomes || []).includes(d.id));
+
+  // ゲノムを種類ごとに束ねる。v0.36 で64種になり、ひと続きでは探せなくなった。
+  const genomeGroupOf = (def) => {
+    if (def.id.startsWith('myth_') || def.id === 'mono_master_dna') return 'myth';
+    if (def.id.startsWith('league_')) return 'league';
+    if (def.isBodyGenome) return 'body';
+    if (def.isPathGenome) return 'path';
+    return 'base';
+  };
+  const GENOME_GROUPS = [
+    { id: 'base', label: '基礎', hint: '練習と試合の積み重ねで伸びる' },
+    { id: 'body', label: '体格', hint: '選んだ体格に応じて伸びる' },
+    { id: 'path', label: '進路', hint: 'その進路で過ごした年数で伸びる' },
+    { id: 'league', label: 'リーグ', hint: 'その国で戦い続けると身につく' },
+    { id: 'myth', label: '神話', hint: '周回を重ねた人だけが届く到達点' }
+  ];
+  const groupedActiveGenomes = GENOME_GROUPS.map((g) => ({
+    ...g,
+    items: activeBaseGenomes.filter((d) => genomeGroupOf(d) === g.id)
+  })).filter((g) => g.items.length > 0);
   const archivedBaseGenomes = BASE_GENOME_DEF.filter((d) => (gameState.archivedGenomes || []).includes(d.id));
   const totalGenomeCount =
     Object.values(g).reduce((a, b) => a + b, 0) +
@@ -7993,9 +8285,9 @@ ${activeChObj.rewardText}`}
           <button
             onClick={() => setTutorialModalOpen(true)}
             className="px-1.5 py-0.5 text-[9.5px] font-mono bg-indigo-950 border border-indigo-600 text-indigo-200 hover:text-white cursor-pointer"
-            title="v0.35 ガイドを表示"
+            title="v0.36 ガイドを表示"
           >
-            v0.35
+            v0.36
           </button>
           <button
             onClick={() => {
@@ -9512,7 +9804,7 @@ ${activeChObj.rewardText}`}
 
                     <label
                       className="flex items-center gap-1 text-emerald-300 font-bold cursor-pointer"
-                      title="進路選択の全選択肢がゲノムLv.5完了済みの場合のみ、最上位進路を自動選択します（未コンプがある場合は必ず手動選択）"
+                      title="進路選択で止まらず、設定した方針で自動的に選びます（方針はシステム詳細の設定欄で切り替え）"
                     >
                       <input
                         type="checkbox"
@@ -9525,7 +9817,7 @@ ${activeChObj.rewardText}`}
                         }
                         className="accent-emerald-400"
                       />
-                      全進路コンプ済みなら自動進学
+                      進路を自動で選ぶ
                     </label>
                   </div>
 
@@ -9596,7 +9888,17 @@ ${activeChObj.rewardText}`}
 
                   {genomeSubTab === 'active' && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1">
-                      {activeBaseGenomes.map((def) => {
+                      {groupedActiveGenomes.map((grp) => (
+                        <div key={grp.id} className="contents">
+                          <div className="col-span-full flex items-baseline gap-1.5 pt-1">
+                            <span className="text-[9px] font-bold text-sky-300">{grp.label}</span>
+                            <span className="text-[8px] text-slate-500">{grp.hint}</span>
+                            <span className="text-[8px] text-slate-600 font-mono">
+                              {grp.items.filter((d) => (gameState.genomes?.[d.id] || 0) > 0).length}/
+                              {grp.items.length}
+                            </span>
+                          </div>
+                          {grp.items.map((def) => {
                         const curLv = gameState.genomes?.[def.id] || 0;
                         const val = def.getStatVal(gameState);
                         const isMax = !def.isPathGenome && curLv >= def.maxLv;
@@ -9634,7 +9936,9 @@ ${activeChObj.rewardText}`}
                             </div>
                           </div>
                         );
-                      })}
+                          })}
+                        </div>
+                      ))}
                     </div>
                   )}
 
