@@ -73,6 +73,38 @@ const CONTRACT_FLOOR_RATING = 4.5;
 // 本人の指摘（2026-11-26）:「一周目からメディア代表アピールあるの変だな。消すか」
 // 取材が来るのはプロ契約（J3以上）を結んでから。
 const MEDIA_MIN_CAT = 9;
+
+// 無制限投資。上限がなく、買うほど高くなる。
+// JSX の中に直書きされていたものを定数にした（自動購入からも使うため）。
+const ENDLESS_INVEST_DEF = [
+  {
+    id: 'endless_lab',
+    name: '青空スポーツ科学研究所',
+    desc: '全能力上限 +0.35/Lv',
+    baseG: 40000,
+    basePt: 140
+  },
+  {
+    id: 'endless_ai',
+    name: 'AI戦術解析スーパーコンピュータ',
+    desc: '全能力成長 +2.5% & 閃き+0.3%/Lv',
+    baseG: 50000,
+    basePt: 180
+  },
+  {
+    id: 'endless_fund',
+    name: '青空グローバル育成基金',
+    desc: '全試合戦力 +2%/Lv',
+    baseG: 65000,
+    basePt: 220
+  }
+];
+const ENDLESS_INVEST_GROWTH = 1.38;
+
+// 全国スクール巡業 1回ぶんのコスト
+const SCHOOL_TOUR_COST = { fans: 400, money: 15000 };
+// シグネチャーブランド（ファンで買い、資金も要る）
+const SIG_BRAND = { maxLv: 30, baseFans: 1500, baseMoney: 35000, growth: 1.65 };
 const ALL_DRILL_IDS = ['tech_drill', 'phy_drill', 'tactics_video', 'shoot_drill', 'mental_image'];
 
 // --- ポジション定義（全7種・転生時に選択） ---
@@ -898,6 +930,102 @@ const LOCAL_CLUB_FACILITIES = [
 
 // --- ベースゲノム定義（100周目バランスへ倍率調整＆7歳ジュニア進路3種＋子ども才能別ゲノム追加） ---
 const BASE_GENOME_DEF = [
+  // ===== 桁違いの到達点（周回を重ねた人だけが届く） =====
+  //
+  // 前線に固定する圧力を作らないよう、得点・アシスト・守備・出場・
+  // 練習量・現役年数に同じ重さで置いてある。
+  // step が巨大なので、Lv1 を取るだけでも何十周ぶんの積み上げが要る。
+  {
+    id: 'myth_scorer_dna',
+    name: '【神話】10万ゴールの伝説',
+    maxLv: 10,
+    condition: '通算ゴール数（10万ごと）',
+    effectDesc: (lv) => `決定戦力 +${lv * 6}% / 全上限 +${lv * 12}`,
+    getStatVal: (s) => s.totalCareerGoals || 0,
+    step: 100000
+  },
+  {
+    id: 'myth_creator_dna',
+    name: '【神話】10万アシストの設計者',
+    maxLv: 10,
+    condition: '通算アシスト数（10万ごと）',
+    effectDesc: (lv) => `戦術眼成長 +${lv * 6}% / 全上限 +${lv * 12}`,
+    getStatVal: (s) => s.totalCareerAssists || 0,
+    step: 100000
+  },
+  {
+    id: 'myth_winner_dna',
+    name: '【神話】100万勝の王',
+    maxLv: 10,
+    condition: '通算勝利数（100万ごと）',
+    effectDesc: (lv) => `全試合戦力 +${lv * 5}% / 全上限 +${lv * 15}`,
+    getStatVal: (s) => s.careerWins || 0,
+    step: 1000000
+  },
+  {
+    id: 'myth_ironwall_dna',
+    name: '【神話】50万試合の壁',
+    maxLv: 10,
+    condition: 'CB・GK・SBでの通算出場（50万ごと）',
+    effectDesc: (lv) => `守備戦力 +${lv * 7}% / 体力上限 +${lv * 40}`,
+    getStatVal: (s) => s.careerDefMatches || 0,
+    step: 500000
+  },
+  {
+    id: 'myth_ever_dna',
+    name: '【神話】1億試合の記録',
+    maxLv: 10,
+    condition: '通算出場試合数（1億ごと）',
+    effectDesc: (lv) => `全能力成長 +${lv * 4}% / 全上限 +${lv * 20}`,
+    getStatVal: (s) => s.careerTotalMatches || 0,
+    step: 100000000
+  },
+  {
+    id: 'myth_grind_dna',
+    name: '【神話】1億回の反復',
+    maxLv: 10,
+    condition: '全練習の累計回数（1億ごと）',
+    effectDesc: (lv) => `全能力成長 +${lv * 5}% / 閃き +${lv * 0.4}%`,
+    getStatVal: (s) =>
+      Object.values(s.careerDrillCounts || {}).reduce((a, b) => a + (b || 0), 0),
+    step: 100000000
+  },
+  {
+    id: 'myth_eternal_dna',
+    name: '【神話】1万年の現役',
+    maxLv: 10,
+    condition: '35歳以降の現役月数（12万ヶ月ごと）',
+    effectDesc: (lv) => `衰え -${lv * 4}% / 引退寿命 +${lv * 3}歳`,
+    getStatVal: (s) => s.careerVeteranMonths || 0,
+    step: 120000
+  },
+  {
+    id: 'myth_mentor_dna',
+    name: '【神話】1万人の師',
+    maxLv: 10,
+    condition: '師弟特訓の累計（1万ごと）',
+    effectDesc: (lv) => `全上限 +${lv * 10} / 戦術Pt +${lv * 5}%`,
+    getStatVal: (s) => s.careerProtegeExp || 0,
+    step: 10000
+  },
+  // ===== ひとつの能力を突き詰めた証 =====
+  //
+  // 本人の要望:「もっと1つの能力を突き詰めるインセンティブを作りたい」
+  // 最大の能力が他3つの合計を超えたときだけ伸びる。満遍なく上げると一生 Lv0。
+  {
+    id: 'mono_master_dna',
+    name: '【極】一点突破の証',
+    maxLv: 10,
+    condition: '最大能力が他3つの合計を超えた分',
+    effectDesc: (lv) => `全試合戦力 +${lv * 4}%（尖っているほど効く）`,
+    getStatVal: (s) => {
+      const v = [s.stats?.tec || 0, s.stats?.phy || 0, s.stats?.iq || 0, s.stats?.sht || 0];
+      const top = Math.max(...v);
+      const rest = v.reduce((a, b) => a + b, 0) - top;
+      return Math.max(0, top - rest);
+    },
+    step: 60
+  },
   {
     id: 'striker_dna',
     name: '点取り屋の遺伝子',
@@ -1933,12 +2061,12 @@ const LEGACY_UPGRADES_DEF = [
   },
   {
     id: 'trait_vessel_crystal',
-    name: '【枠拡張】多才の記憶器（特性装備枠+1）',
+    name: '【枠拡張】多才の記憶器（特性装備枠+1/Lv）',
     tag: '枠拡張',
     baseCost: 65,
-    growth: 1.0,
-    maxLv: 1,
-    short: 'ハイブリッド特性の同時装備枠を +1枠拡張！',
+    growth: 2.4,
+    maxLv: 4,
+    short: 'ハイブリッド特性の同時装備枠を +1枠/Lv 拡張！',
     desc: '複数のポジション特性を同時に宿す記憶の器を魂に刻む。'
   },
   {
@@ -2000,7 +2128,7 @@ const LEGACY_UPGRADES_DEF = [
     name: '絆の器（お守り枠拡張）',
     baseCost: 50,
     growth: 2.8,
-    maxLv: 2,
+    maxLv: 3,
     short: '絆のお守り装備枠 +1枠/Lv',
     desc: '人生のイベントで得た「絆のお守り」を同時に装備できる枠を増やす。'
   }
@@ -2023,6 +2151,15 @@ const ASCENSION_UPGRADES_DEF = [
     maxLv: 1,
     short: '買えば即発動！継承結晶が貯まるたび、買える強化を自動で買う',
     desc: '何十回も同じ買い物を繰り返した記憶が、意思を持ったように先回りして動く。結晶が貯まるそばから強化へ変わっていく。'
+  },
+  {
+    id: 'divine_business_agent',
+    name: '【神域自動化】事業の代理人（投資・クラブ・ブランドを自動運営）',
+    baseCost: 70,
+    growth: 1.0,
+    maxLv: 1,
+    short: '買えば即発動！無制限投資・蒼空FC・ブランド・スクール巡業を毎月まとめて処理',
+    desc: '金の使い道を考える時間すら惜しい。何に投じれば伸びるかは、何十回もの人生で検算済みだ。'
   },
   {
     id: 'divine_breakthrough_agent',
@@ -2083,8 +2220,8 @@ const ASCENSION_UPGRADES_DEF = [
     name: '超越者の聖櫃',
     baseCost: 12,
     growth: 3.0,
-    maxLv: 1,
-    short: '絆のお守り装備枠 +1枠 & 特性装備枠 +1枠',
+    maxLv: 2,
+    short: '絆のお守り装備枠 +1枠/Lv & 特性装備枠 +1枠/Lv',
     desc: '魂に刻める絆のお守り枠とプレースタイル特性枠をそれぞれ1枠拡張する。'
   },
   {
@@ -2236,14 +2373,20 @@ const getActiveSynergies = (s) => {
 };
 
 // --- お守り＆特性最大装備枠計算（超過分は自動解除するヘルパーも併設） ---
+// お守りは全7種。拡張を積みきると全部つけられる。
+//   1（初期） + 3（結晶の器MAX） + 2（聖杯の聖櫃MAX） + 1（恋愛ゲノムLv5） = 7
+const CHARM_SLOT_MAX = 7;
 const computeMaxCharmSlots = (legacyUpgrades = {}, ascensionUpgrades = {}, genomes = {}) => {
   const base = 1;
   const vesselBonus = legacyUpgrades.charm_vessel || 0;
   const divineBonus = ascensionUpgrades.divine_charm_slot || 0;
   const loveBonus = (genomes.romance_bond_dna || 0) >= 5 ? 1 : 0;
-  return Math.min(5, base + vesselBonus + divineBonus + loveBonus);
+  return Math.min(CHARM_SLOT_MAX, base + vesselBonus + divineBonus + loveBonus);
 };
 
+// 特性は全9種。
+//   1（初期） + 1（上位転生） + 2（聖杯の聖櫃MAX） + 4（多才の記憶器MAX） + 1（ブレイクスルー） = 9
+const TRAIT_SLOT_MAX = 9;
 const computeMaxTraitSlots = (
   ascensionCount = 0,
   ascensionUpgrades = {},
@@ -2251,8 +2394,8 @@ const computeMaxTraitSlots = (
   breakthroughs = {}
 ) => {
   return Math.min(
-    6,
-    2 +
+    TRAIT_SLOT_MAX,
+    1 +
       (ascensionCount >= 1 ? 1 : 0) +
       (ascensionUpgrades.divine_charm_slot || 0) +
       (legacyUpgrades.trait_vessel_crystal || 0) +
@@ -2364,6 +2507,14 @@ const computeIndividualStatCaps = (
   if (secretGenomes.includes('secret_veteran_iron')) secretBonus += 3;
   if (secretGenomes.includes('secret_time_master')) secretBonus += 4;
 
+  // 桁違いのゲノムによる上限ボーナス
+  const mythCapBonus =
+    (genomes.myth_scorer_dna || 0) * 12 +
+    (genomes.myth_creator_dna || 0) * 12 +
+    (genomes.myth_winner_dna || 0) * 15 +
+    (genomes.myth_ever_dna || 0) * 20 +
+    (genomes.myth_mentor_dna || 0) * 10;
+
   const achBonus =
     (achievements.includes('youth_elite') ? 2 : 0) +
     (achievements.includes('j_leaguer') ? 3 : 0) +
@@ -2397,6 +2548,7 @@ const computeIndividualStatCaps = (
     fusedBonus +
     secretBonus +
     achBonus +
+    mythCapBonus +
     trialCapBonus;
 
   // 段階ごとの能力上限の倍率。
@@ -2433,6 +2585,7 @@ const computeIndividualStatCaps = (
     0.12,
     (secretGenomes.includes('secret_veteran_iron') ? 0.6 : 1.0) *
       Math.max(0.3, 1 - (genomes.king_eternal_dna || 0) * 0.1) *
+      Math.max(0.3, 1 - (genomes.myth_eternal_dna || 0) * 0.04) *
       (fusedGenomes.includes('fused_eternal_king') ? 0.45 : 1.0) *
       (unlockedEndings.includes('ed_eternal_50') ? 0.75 : 1.0) *
       (completedChallenges.includes('ch_twilight_32') ? 0.6 : 1.0)
@@ -2571,6 +2724,8 @@ const getDrillEffectiveStats = (s, drill) => {
     (1 + memLv * 0.11) *
     (1 + (s.ascensionUpgrades?.divine_growth_overdrive || 0) * 0.25) *
     cosmicProtegeMult *
+    (1 + (g.myth_ever_dna || 0) * 0.04) *
+    (1 + (g.myth_grind_dna || 0) * 0.05) *
     (1 + (g.balanced_body_dna || 0) * 0.02) *
     (1 + (g.allrounder_dna || 0) * 0.015) *
     (1 + (g.romance_bond_dna || 0) * 0.02) *
@@ -2599,7 +2754,9 @@ const getDrillEffectiveStats = (s, drill) => {
 
   // 要素を全部揃えたときの指数爆発を抑える（src/lib/softcap.js）。
   // 実挙動側（executeDrillInternal）と必ず同じ式にすること。
-  const globalMult = softcap(rawGlobalMult, GROWTH_SOFTCAP.threshold, GROWTH_SOFTCAP.strength);
+  const globalMult =
+    softcap(rawGlobalMult, GROWTH_SOFTCAP.threshold, GROWTH_SOFTCAP.strength) *
+    legacyHoardMult(s.legacyPoints);
 
   const ch2BodyTecMult = s.completedChallenges?.includes('ch_pure_body') ? 1.2 : 1.0;
 
@@ -2734,6 +2891,33 @@ const applyRivalMilestone = (s, tierObj, wins, onToast) => {
   }
 };
 
+// 継承結晶を「使わずに持っている」ことの価値。
+//
+// 本人の要望（2026-11-26）:
+//   「結晶の使い道がなくなった後も、結晶保持数に価値が出るように、
+//     持ってる数でわずかながら能力がアップするようにするか。1.0001倍みたいな感じ？」
+//
+// 対数なので、1桁増えても +1.2% ずつしか伸びない。
+//   100 → +2.4% / 1万 → +4.8% / 1億 → +9.6%
+const legacyHoardMult = (legacyPoints) => 1 + Math.log10(1 + Math.max(0, legacyPoints || 0)) * 0.012;
+
+// ひとつの能力を突き詰めたときのボーナス。
+//
+// 本人の要望（2026-11-26）:
+//   「もっと1つの能力を突き詰めるインセンティブを作りたいよなあ。
+//     結局全部の数字をガンガン上げていくだけになっている」
+//
+// 最大値が他3つの平均の何倍かで決まる。1.6倍を超えたところから効き始め、
+// 4倍まで尖らせると +45%。満遍なく上げた選手には一切つかない。
+const specializationMult = (stats) => {
+  const vals = [stats.tec || 0, stats.phy || 0, stats.iq || 0, stats.sht || 0];
+  const top = Math.max(...vals);
+  const rest = vals.reduce((a, b) => a + b, 0) - top;
+  if (rest <= 0) return 1;
+  const ratio = top / (rest / 3);
+  return 1 + Math.min(0.45, Math.max(0, ratio - 1.6) * 0.19);
+};
+
 const MiniBar = ({ label, current, max, colorClass, rateText }) => {
   const pct = Math.min(100, Math.max(0, (current / Math.max(1, max)) * 100));
   return (
@@ -2862,7 +3046,17 @@ export default function App() {
       completedChallenges = [],
       activeChallenge = null,
       tacticalStyle = 'balanced',
-      qolToggles = { autoGearBuy: true, autoSocialRun: true, autoCareerPath: false, hideCompleted: false, pauseOnRebirth: true },
+      qolToggles = {
+        autoGearBuy: true,
+        autoSocialRun: true,
+        autoCareerPath: false,
+        autoPathMode: 'best',
+        preferredPartner: null,
+        preferredEuroCountry: null,
+        autoReincarnate: false,
+        hideCompleted: false,
+        pauseOnRebirth: true
+      },
       preChallengeSnapshot = null
     ) => {
       const bodyLv = legacyUpgrades.iron_body || 0;
@@ -2992,6 +3186,7 @@ export default function App() {
         ironBodyLv * 2.0 +
         (secretGenomes.includes('secret_veteran_iron') ? 2 : 0) +
         (genomes.king_eternal_dna || 0) * 0.6 +
+        (genomes.myth_eternal_dna || 0) * 3 +
         (fusedGenomes.includes('fused_eternal_king') ? 2 : 0) +
         (completedChallenges.includes('ch_twilight_32') ? 3 : 0);
 
@@ -3044,6 +3239,10 @@ export default function App() {
           autoGearBuy: qolToggles.autoGearBuy !== undefined ? Boolean(qolToggles.autoGearBuy) : true,
           autoSocialRun: qolToggles.autoSocialRun !== undefined ? Boolean(qolToggles.autoSocialRun) : true,
           autoCareerPath: Boolean(qolToggles.autoCareerPath),
+          autoPathMode: qolToggles.autoPathMode || 'best',
+          preferredPartner: qolToggles.preferredPartner || null,
+          preferredEuroCountry: qolToggles.preferredEuroCountry || null,
+          autoReincarnate: Boolean(qolToggles.autoReincarnate),
           // 転生した直後に時間を止めるか。止めれば落ち着いて方針を決められる
           pauseOnRebirth: qolToggles.pauseOnRebirth !== undefined ? Boolean(qolToggles.pauseOnRebirth) : true,
           hideCompleted: Boolean(qolToggles.hideCompleted)
@@ -3330,6 +3529,10 @@ export default function App() {
           autoGearBuy: parsed.qolToggles?.autoGearBuy !== undefined ? Boolean(parsed.qolToggles.autoGearBuy) : true,
           autoSocialRun: parsed.qolToggles?.autoSocialRun !== undefined ? Boolean(parsed.qolToggles.autoSocialRun) : true,
           autoCareerPath: Boolean(parsed.qolToggles?.autoCareerPath),
+          autoPathMode: parsed.qolToggles?.autoPathMode || 'best',
+          preferredPartner: parsed.qolToggles?.preferredPartner || null,
+          preferredEuroCountry: parsed.qolToggles?.preferredEuroCountry || null,
+          autoReincarnate: Boolean(parsed.qolToggles?.autoReincarnate),
           hideCompleted: Boolean(parsed.qolToggles?.hideCompleted)
         },
         life: {
@@ -3642,9 +3845,21 @@ export default function App() {
       if (!s.unlockedEndings) s.unlockedEndings = [];
 
       // 1. ベースゲノム Lv計算
+      // 進路ゲノムの上限は、上位転生を経ると大きく広がる。
+      //
+      // 本人の要望（2026-11-26）:
+      //   「それぞれの進路のゲノム上限を第二転生したら10倍にする
+      //     ＝育成ループのインセンティブ向上とか？」
+      //
+      // 第2段階で5倍、第3段階以降で10倍。
+      // コンプしきった進路をもう一度育てる理由になる。
+      const ascForGenome = s.ascensionCount || 0;
+      const pathLvMult = ascForGenome >= 2 ? 10 : ascForGenome >= 1 ? 5 : 1;
+
       for (const def of BASE_GENOME_DEF) {
         const val = def.getStatVal(s);
-        const targetLv = Math.min(def.maxLv, Math.floor(val / def.step));
+        const effMaxLv = def.isPathGenome ? def.maxLv * pathLvMult : def.maxLv;
+        const targetLv = Math.min(effMaxLv, Math.floor(val / def.step));
         const curLv = s.genomes[def.id] || 0;
         if (targetLv > curLv) {
           s.genomes[def.id] = targetLv;
@@ -3814,7 +4029,11 @@ export default function App() {
       const g = s.genomes || {};
       const critChance = Math.min(
         0.3,
-        0.025 + (u.tactics_note || 0) * 0.004 + (g.dribbler_dna || 0) * 0.006 + (s.endlessInvest?.endless_ai || 0) * 0.003
+        0.025 +
+          (u.tactics_note || 0) * 0.004 +
+          (g.dribbler_dna || 0) * 0.006 +
+          (g.myth_grind_dna || 0) * 0.004 +
+          (s.endlessInvest?.endless_ai || 0) * 0.003
       );
       const isCrit = nextRandom(s) < critChance;
       const critMult = isCrit ? 7.0 : 1.0;
@@ -3837,6 +4056,8 @@ export default function App() {
         (1 + memLv * 0.11) *
         (1 + (s.ascensionUpgrades?.divine_growth_overdrive || 0) * 0.25) *
         cosmicProtegeMult *
+        (1 + (g.myth_ever_dna || 0) * 0.04) *
+        (1 + (g.myth_grind_dna || 0) * 0.05) *
         (1 + (g.balanced_body_dna || 0) * 0.02) *
         (1 + (g.allrounder_dna || 0) * 0.015) *
         (1 + (g.romance_bond_dna || 0) * 0.02) *
@@ -3865,7 +4086,9 @@ export default function App() {
 
       // 要素を全部揃えたときの指数爆発を抑える（src/lib/softcap.js）。
       // UI予測側（getDrillEffectiveStats）と必ず同じ式にすること。
-      const mult = softcap(rawMult, GROWTH_SOFTCAP.threshold, GROWTH_SOFTCAP.strength);
+      const mult =
+        softcap(rawMult, GROWTH_SOFTCAP.threshold, GROWTH_SOFTCAP.strength) *
+        legacyHoardMult(s.legacyPoints);
 
       const ch2BodyTecMult = s.completedChallenges?.includes('ch_pure_body') ? 1.2 : 1.0;
 
@@ -3900,6 +4123,7 @@ export default function App() {
         (1 + (u.tactics_note || 0) * 0.08) *
         (1 + (hb.chess || 0) * 0.05) *
         (1 + (g.maestro_dna || 0) * 0.025) *
+        (1 + (g.myth_creator_dna || 0) * 0.06) *
         (1 + (g.university_iq_dna || 0) * 0.035) *
         (1 + (g.coach_mentor_dna || 0) * 0.03) *
         (1 + (g.j_elite_dna || 0) * 0.035) *
@@ -3939,6 +4163,7 @@ export default function App() {
         const tStyle = TACTICAL_STYLES[s.tacticalStyle] || TACTICAL_STYLES.balanced;
         const ptMult =
           (1 + (s.legacyUpgrades?.sharp_mind || 0) * 0.14) *
+          (1 + (g.myth_mentor_dna || 0) * 0.05) *
           (1 + (u.tactics_note || 0) * 0.1) *
           (1 + (hb.chess || 0) * 0.07) *
           (protegeObj?.id === 'soma' ? 1 + protegeBondLv * 0.06 : 1.0) *
@@ -4119,6 +4344,8 @@ export default function App() {
       const rawGlobalPowerMult =
         (1 + (g.iron_will_dna || 0) * 0.02) *
         (1 + (g.allrounder_dna || 0) * 0.02) *
+        (1 + (g.myth_winner_dna || 0) * 0.05) *
+        (1 + (g.mono_master_dna || 0) * 0.04) *
         (1 + (g.total_player_dna || 0) * 0.015) *
         (1 + (g.family_guardian_dna || 0) * 0.025) *
         (1 + (g.euro_cc_dna || 0) * 0.03) *
@@ -4155,7 +4382,10 @@ export default function App() {
         ((s.zoneFeverMonths || 0) > 0 ? 1.3 : 1.0);
 
       // 30個以上の倍率を素直に掛けると指数で爆発する（src/lib/softcap.js）
-      const globalPowerMult = softcap(rawGlobalPowerMult, POWER_SOFTCAP.threshold, POWER_SOFTCAP.strength);
+      const globalPowerMult =
+        softcap(rawGlobalPowerMult, POWER_SOFTCAP.threshold, POWER_SOFTCAP.strength) *
+        legacyHoardMult(s.legacyPoints) *
+        specializationMult(s.stats);
 
       const underdogBoost =
         oppPower > rating
@@ -4173,6 +4403,7 @@ export default function App() {
         (s.stats.sht * 0.65 + s.stats.tec * 0.35) *
         tStyle.shootMult *
         (1 + (g.striker_dna || 0) * 0.025) *
+        (1 + (g.myth_scorer_dna || 0) * 0.06) *
         (1 + (g.giant_body_dna || 0) * 0.03) *
         (1 + (g.child_son_prodigy_dna || 0) * 0.04) *
         (1 + (hb.golf || 0) * 0.04) *
@@ -4204,6 +4435,7 @@ export default function App() {
         (s.stats.phy * 0.65 + s.stats.iq * 0.35) *
         tStyle.defMult *
         (1 + (g.fortress_dna || 0) * 0.03) *
+        (1 + (g.myth_ironwall_dna || 0) * 0.07) *
         (1 + (g.team_synergy_dna || 0) * 0.03) *
         (1 + (mateGk - 1) * 0.028 + (mateCb - 1) * 0.025) *
         (protegeObj?.id === 'raizo' ? 1 + protegeBondLv * 0.04 * cosmicProtegeMult : 1.0) *
@@ -4558,6 +4790,16 @@ export default function App() {
           if (i >= 9 && !s.achievements.includes('j_leaguer')) {
             s.achievements = [...s.achievements, 'j_leaguer'];
           }
+          // 欧州に上がったら、決めておいた国のクラブへ移る。
+          // 本人の指摘（2026-11-26）:
+          //   「海外一部クラブをクリックしないと二部のまま移籍しないのはおかしい」
+          if (i >= 12) {
+            const wanted = s.qolToggles?.preferredEuroCountry;
+            if (wanted && EURO_COUNTRIES[wanted] && s.euroCountry !== wanted) {
+              s.euroCountry = wanted;
+              s.clubName = `${EURO_COUNTRIES[wanted].name}・トップクラブ`;
+            }
+          }
           if (i >= 12 && !s.achievements.includes('overseas')) {
             s.achievements = [...s.achievements, 'overseas'];
           }
@@ -4804,17 +5046,31 @@ export default function App() {
           const cost = Math.floor(upg.baseCost * Math.pow(upg.growth, curLv));
           return (newState.legacyPoints || 0) >= cost;
         });
-        if (buyable.length > 0) {
-          const cheapest = buyable.reduce((best, upg) => {
+        // 安いものから順に、買えなくなるまで買う
+        let legacyGuard = 0;
+        let boughtLegacy = 0;
+        while (legacyGuard < 500) {
+          const affordable = LEGACY_UPGRADES_DEF.filter((upg) => {
+            if (upg.requiresId && (newState.legacyUpgrades?.[upg.requiresId] || 0) < 1) return false;
+            const lv = newState.legacyUpgrades?.[upg.id] || 0;
+            if (lv >= upg.maxLv) return false;
+            return (newState.legacyPoints || 0) >= Math.floor(upg.baseCost * Math.pow(upg.growth, lv));
+          });
+          if (affordable.length === 0) break;
+          const cheapest = affordable.reduce((best, upg) => {
             const c = Math.floor(upg.baseCost * Math.pow(upg.growth, newState.legacyUpgrades?.[upg.id] || 0));
             const bc = Math.floor(best.baseCost * Math.pow(best.growth, newState.legacyUpgrades?.[best.id] || 0));
             return c < bc ? upg : best;
-          }, buyable[0]);
+          }, affordable[0]);
           const curLv = newState.legacyUpgrades?.[cheapest.id] || 0;
           const cost = Math.floor(cheapest.baseCost * Math.pow(cheapest.growth, curLv));
           newState.legacyPoints = (newState.legacyPoints || 0) - cost;
           newState.legacyUpgrades = { ...(newState.legacyUpgrades || {}), [cheapest.id]: curLv + 1 };
-          addLogMsg(newState, `♻️【輪廻の代理人】「${cheapest.name}」Lv.${curLv + 1} を自動購入（💎-${cost}）`, 'info');
+          boughtLegacy += 1;
+          legacyGuard += 1;
+        }
+        if (boughtLegacy > 0) {
+          addLogMsg(newState, `♻️【輪廻の代理人】継承結晶の強化を ${boughtLegacy}Lv ぶん自動購入`, 'info');
         }
       }
 
@@ -4838,7 +5094,118 @@ export default function App() {
             newState.autoActions = ALL_DRILL_IDS.filter((id) => newState.unlocks[id]);
           }
           addLogMsg(newState, `✨【覚醒の代理人】永続ブレイクスルー「${bt.name}」を自動習得`, 'levelup');
-          break;
+          // break しない。買えるものは全部その場で習得する
+        }
+      }
+
+      // QoL自動化⓪c：事業の代理人（投資・クラブ・ブランド・巡業を自動運営）
+      //
+      // 本人の要望（2026-11-26）:
+      //   「無制限投資、クラブ運営、スクールなどの購入自動化もアイテムが欲しい」
+      //
+      // 道具と同じく「買えるものは全部その場で」。
+      // 資金を使い切らないよう、どれも 1.5倍の余裕を見てから買う。
+      if ((newState.ascensionUpgrades?.divine_business_agent || 0) >= 1) {
+        const soloBan =
+          newState.activeChallenge === 'ch_solo_carry' || newState.activeChallenge === 'ch_ascetic_god';
+        let bizGuard = 0;
+        let bizBought = true;
+        while (bizBought && bizGuard < 400) {
+          bizBought = false;
+
+          // 無制限投資
+          for (const item of ENDLESS_INVEST_DEF) {
+            const lv = newState.endlessInvest?.[item.id] || 0;
+            const g = Math.floor(item.baseG * Math.pow(ENDLESS_INVEST_GROWTH, lv));
+            const pt = Math.floor(item.basePt * Math.pow(ENDLESS_INVEST_GROWTH, lv));
+            if (newState.money >= g * 1.5 && newState.tactics >= pt * 1.3) {
+              newState.money -= g;
+              newState.tactics = Number((newState.tactics - pt).toFixed(1));
+              newState.endlessInvest = { ...(newState.endlessInvest || {}), [item.id]: lv + 1 };
+              bizBought = true;
+              bizGuard += 1;
+            }
+          }
+
+          if (!soloBan) {
+            // 蒼空FC の同僚と施設
+            for (const mate of LOCAL_CLUB_MATES) {
+              const lv = newState.clubMates?.[mate.id] || 1;
+              if (lv >= mate.maxLv) continue;
+              const g = Math.floor(mate.baseG * Math.pow(mate.growth, lv));
+              const pt = Math.floor(mate.basePt * Math.pow(mate.growth, lv));
+              if (newState.money >= g * 1.5 && newState.tactics >= pt * 1.3) {
+                newState.money -= g;
+                newState.tactics = Number((newState.tactics - pt).toFixed(1));
+                newState.clubMates = { ...(newState.clubMates || {}), [mate.id]: lv + 1 };
+                bizBought = true;
+                bizGuard += 1;
+              }
+            }
+            for (const fac of LOCAL_CLUB_FACILITIES) {
+              const lv = newState.clubFacilities?.[fac.id] || 0;
+              if (lv >= fac.maxLv) continue;
+              const g = Math.floor(fac.baseG * Math.pow(fac.growth, lv));
+              const pt = Math.floor(fac.basePt * Math.pow(fac.growth, lv));
+              if (newState.money >= g * 1.5 && newState.tactics >= pt * 1.3) {
+                newState.money -= g;
+                newState.tactics = Number((newState.tactics - pt).toFixed(1));
+                newState.clubFacilities = { ...(newState.clubFacilities || {}), [fac.id]: lv + 1 };
+                bizBought = true;
+                bizGuard += 1;
+              }
+            }
+            // クラブ昇格。到達カテゴリで上限が決まる
+            const clubLv = newState.localClubLv || 1;
+            const nextClubLv = clubLv + 1;
+            if (nextClubLv <= 7 && newState.categoryId >= (LOCAL_CLUB_REQ_CAT[nextClubLv] ?? 99)) {
+              const g = Math.floor(35000 * Math.pow(2.25, clubLv));
+              const pt = Math.floor(140 * Math.pow(2.25, clubLv));
+              if (newState.money >= g * 1.5 && newState.tactics >= pt * 1.3) {
+                newState.money -= g;
+                newState.tactics = Number((newState.tactics - pt).toFixed(1));
+                newState.localClubLv = nextClubLv;
+                if (nextClubLv >= 4 && !newState.unlockedCharms?.includes('charm_club')) {
+                  newState.unlockedCharms = [...(newState.unlockedCharms || []), 'charm_club'];
+                }
+                bizBought = true;
+                bizGuard += 1;
+              }
+            }
+          }
+
+          // シグネチャーブランド（ファンで買う）
+          const brandLv = newState.brandProjects?.sig_brand || 0;
+          if (brandLv < SIG_BRAND.maxLv) {
+            const f = Math.floor(SIG_BRAND.baseFans * Math.pow(SIG_BRAND.growth, brandLv));
+            const g = Math.floor(SIG_BRAND.baseMoney * Math.pow(SIG_BRAND.growth, brandLv));
+            if ((newState.fans || 0) >= f * 1.5 && newState.money >= g * 1.5) {
+              newState.fans -= f;
+              newState.money -= g;
+              newState.brandProjects = { ...(newState.brandProjects || {}), sig_brand: brandLv + 1 };
+              bizBought = true;
+              bizGuard += 1;
+            }
+          }
+
+          // スクール巡業（ファンを熟練度に換える）
+          if (
+            (newState.fans || 0) >= SCHOOL_TOUR_COST.fans * 2 &&
+            newState.money >= SCHOOL_TOUR_COST.money * 2
+          ) {
+            newState.fans -= SCHOOL_TOUR_COST.fans;
+            newState.money -= SCHOOL_TOUR_COST.money;
+            newState.tactics = Number((newState.tactics + 45).toFixed(1));
+            for (const id of ALL_DRILL_IDS) {
+              newState.mastery[id] = (newState.mastery[id] || 0) + 15;
+            }
+            newState.brandProjects = {
+              ...(newState.brandProjects || {}),
+              school_tour: (newState.brandProjects?.school_tour || 0) + 1
+            };
+            bizBought = true;
+            bizGuard += 1;
+          }
         }
       }
 
@@ -4848,33 +5215,51 @@ export default function App() {
         (newState.legacyUpgrades?.auto_gear_agent || 0) >= 1 &&
         newState.qolToggles?.autoGearBuy !== false
       ) {
-        for (const upg of UPGRADES_DEF) {
-          if (upg.minAge && newState.age < upg.minAge) continue;
-          if (upg.minCat && newState.categoryId < upg.minCat) continue;
-          if (upg.minFans && (newState.fans || 0) < upg.minFans) continue;
-          const curLv = newState.upgrades?.[upg.id] || 0;
-          if (curLv >= upg.maxLv) continue;
-          const costG = Math.floor(upg.baseG * Math.pow(upg.growth, curLv));
-          const costPt = Math.floor(upg.basePt * Math.pow(upg.growth, curLv));
-          if (newState.money >= costG * 1.4 && newState.tactics >= costPt * 1.2) {
-            newState.money -= costG;
-            newState.tactics = Number((newState.tactics - costPt).toFixed(1));
-            newState.upgrades[upg.id] = curLv + 1;
-            if (upg.id === 'agility_gear') newState.maxStamina += 4;
-            if (upg.id === 'ai_schedule') {
-              const memLv = newState.legacyUpgrades?.tactical_memory || 0;
-              const nextMax = newState.breakthroughs?.smart_auto_all
-                ? 5
-                : Math.min(5, 1 + memLv + Math.min(4, curLv + 1));
-              newState.maxAutoSlots = nextMax;
-              if (newState.unlocks.autoFeature) {
-                const candidate = ALL_DRILL_IDS.find((id) => newState.unlocks[id] && !newState.autoActions.includes(id));
-                if (candidate && newState.autoActions.length < nextMax) {
-                  newState.autoActions = [...newState.autoActions, candidate];
+        // 買えるものは全部その場で買う。
+        //
+        // 本人の指摘（2026-11-26）:
+        //   「自動化オンにしたとき、アイテムを1つ1つ購入している？
+        //     買えるものは転生直後に即全部購入、金が溜まったら全部即時自動購入って
+        //     挙動にしてくれないと、買ってる間に年を取ってる」
+        //
+        // 以前は1ヶ月に1Lvしか買えず、道具を揃えるのに何年もかかっていた。
+        // Lv が上がるたびコストが指数で伸びるので、資金が尽きたら自然に止まる。
+        let autoBuyGuard = 0;
+        let boughtSomething = true;
+        while (boughtSomething && autoBuyGuard < 400) {
+          boughtSomething = false;
+          for (const upg of UPGRADES_DEF) {
+            if (upg.minAge && newState.age < upg.minAge) continue;
+            if (upg.minCat && newState.categoryId < upg.minCat) continue;
+            if (upg.minFans && (newState.fans || 0) < upg.minFans) continue;
+            const curLv = newState.upgrades?.[upg.id] || 0;
+            if (curLv >= upg.maxLv) continue;
+            const costG = Math.floor(upg.baseG * Math.pow(upg.growth, curLv));
+            const costPt = Math.floor(upg.basePt * Math.pow(upg.growth, curLv));
+            // 1.4 / 1.2 の余裕は、他に使う資金を残すため
+            if (newState.money >= costG * 1.4 && newState.tactics >= costPt * 1.2) {
+              newState.money -= costG;
+              newState.tactics = Number((newState.tactics - costPt).toFixed(1));
+              newState.upgrades[upg.id] = curLv + 1;
+              boughtSomething = true;
+              autoBuyGuard += 1;
+              if (upg.id === 'agility_gear') newState.maxStamina += 4;
+              if (upg.id === 'ai_schedule') {
+                const memLv = newState.legacyUpgrades?.tactical_memory || 0;
+                const nextMax = newState.breakthroughs?.smart_auto_all
+                  ? 5
+                  : Math.min(5, 1 + memLv + Math.min(4, curLv + 1));
+                newState.maxAutoSlots = nextMax;
+                if (newState.unlocks.autoFeature) {
+                  const candidate = ALL_DRILL_IDS.find(
+                    (id) => newState.unlocks[id] && !newState.autoActions.includes(id)
+                  );
+                  if (candidate && newState.autoActions.length < nextMax) {
+                    newState.autoActions = [...newState.autoActions, candidate];
+                  }
                 }
               }
             }
-            break;
           }
         }
       }
@@ -4975,9 +5360,17 @@ export default function App() {
             newState.money >= 5000 &&
             (newState.life.affection || 0) < AFFECTION_MAX
           ) {
-            const pType = newState.life.partnerType || 'childhood';
+            // 相手を決めてあれば、条件を満たした時点でその人に切り替える。
+            // 本人の要望（2026-11-26）:「結婚相手もだが、あらかじめ決めておけば」
+            const wantPartner = newState.qolToggles?.preferredPartner;
+            const canWant =
+              wantPartner &&
+              PARTNER_TYPES[wantPartner] &&
+              PARTNER_TYPES[wantPartner].checkUnlock(newState, getTotalRating(newState));
+            const pType = canWant ? wantPartner : newState.life.partnerType || 'childhood';
             const pObj = PARTNER_TYPES[pType];
-            const baseAff = newState.life.affection || 0;
+            // 相手が変わったら好感度はゼロから
+            const baseAff = newState.life.partnerType === pType ? newState.life.affection || 0 : 0;
             const newAff = Math.min(AFFECTION_MAX, baseAff + AFFECTION_PER_DATE);
             const milestone = reachedMilestone(baseAff, newAff);
             const married = newAff >= AFFECTION_MARRY && newState.age >= 18;
@@ -5082,9 +5475,27 @@ export default function App() {
           newState.activeChallenge === 'ch_ascetic_god';
 
         const resolveCareerOptions = (ageKey, heading, sub, opts) => {
-          const allGenomesMastered = opts.every((o) => (newState.genomes?.[o.genomeId] || 0) >= 5);
-          if (allGenomesMastered && newState.qolToggles?.autoCareerPath) {
-            const bestOpt = [...opts].reverse().find((o) => o.unlocked) || opts[0];
+          // 進路を自分で決めずに済ませる設定。
+          //
+          // 本人の要望（2026-11-26）:
+          //   「結婚相手もだが、あらかじめ決めておけばその進路に行く、みたいな要素は入れたい」
+          //
+          // 以前は「その選択肢のゲノムを全部 Lv5 まで育てたあと」しか効かなかったので、
+          // 実質ほとんど動いていなかった。設定が ON なら常に自動で選ぶ。
+          //
+          //   best   : 選べる中でいちばん上のカテゴリへ（既定）
+          //   genome : まだ Lv5 に達していないゲノムのルートを優先（図鑑を埋めたい人向け）
+          if (newState.qolToggles?.autoCareerPath) {
+            const openOpts = opts.filter((o) => o.unlocked);
+            const pickFrom = openOpts.length > 0 ? openOpts : opts;
+            const mode = newState.qolToggles?.autoPathMode || 'best';
+            let bestOpt = [...pickFrom].reverse()[0];
+            if (mode === 'genome') {
+              const notMastered = [...pickFrom]
+                .reverse()
+                .find((o) => (newState.genomes?.[o.genomeId] || 0) < 5);
+              if (notMastered) bestOpt = notMastered;
+            }
             newState.careerPath = bestOpt.id;
             newState.careerPathLabel = bestOpt.shortTitle;
             newState.clubName = bestOpt.clubTitle || bestOpt.shortTitle;
@@ -5853,8 +6264,8 @@ export default function App() {
   // --- ファン還元アクション（スクール巡業も1x / 10x / MAX一括対応！） ---
   const executeFanSchoolTour = () => {
     setGameState((prev) => {
-      const costFans = 400;
-      const costG = 15000;
+      const costFans = SCHOOL_TOUR_COST.fans;
+      const costG = SCHOOL_TOUR_COST.money;
       const maxAffordable = Math.min(Math.floor((prev.fans || 0) / costFans), Math.floor(prev.money / costG));
       const count = buyAmount === 'max' ? maxAffordable : Math.min(buyAmount, maxAffordable);
       if (count <= 0) return prev;
@@ -5884,9 +6295,18 @@ export default function App() {
   const buySignatureBrand = () => {
     setGameState((prev) => {
       const curLv = prev.brandProjects?.sig_brand || 0;
-      const maxLv = 30;
+      const maxLv = SIG_BRAND.maxLv;
       if (curLv >= maxLv) return prev;
-      const calc = calcBulkPurchase(curLv, maxLv, buyAmount, prev.fans || 0, prev.money, 1500, 35000, 1.65);
+      const calc = calcBulkPurchase(
+        curLv,
+        maxLv,
+        buyAmount,
+        prev.fans || 0,
+        prev.money,
+        SIG_BRAND.baseFans,
+        SIG_BRAND.baseMoney,
+        SIG_BRAND.growth
+      );
       if (calc.count === 0) return prev;
 
       const next = {
@@ -5999,7 +6419,16 @@ export default function App() {
   const buyEndlessInvest = (id, label, baseG, basePt) => {
     setGameState((prev) => {
       const curLv = prev.endlessInvest?.[id] || 0;
-      const calc = calcBulkPurchase(curLv, 999, buyAmount, prev.money, prev.tactics, baseG, basePt, 1.38);
+      const calc = calcBulkPurchase(
+        curLv,
+        999,
+        buyAmount,
+        prev.money,
+        prev.tactics,
+        baseG,
+        basePt,
+        ENDLESS_INVEST_GROWTH
+      );
       if (calc.count === 0) return prev;
 
       const next = {
@@ -7341,6 +7770,41 @@ export default function App() {
   // 条件を満たしていた人生でも上位転生できずに第一転生へ流されていた。
   const reachedCatId = Math.max(gameState.categoryId || 0, gameState.peakCategoryId || 0);
   const canAscendNow = legLvSum >= ascReqCrystalLv && reachedCatId >= ascReqCatId;
+
+  // --- 自動タイムリープ ---
+  //
+  // 本人の指摘（2026-11-26）:
+  //   「自動転生じゃないとフレーバーテキストに差が出る？
+  //     装備とかの新要素のポップアップも出ない？ この辺調整しろ」
+  //
+  // 引退モーダルとクリエイトモーダルを自動で進めるだけなので、
+  // 引退の演出文・解放モーダル・エンディング本文はそのまま出る。
+  // 本文モーダルは pendingEnding / pendingUnlocks でゲームループを止めるので、
+  // 自動で進めても読み飛ばされない。
+  //
+  // 上位転生の条件を満たしているときは、自動では進めない。
+  // 何を差し出すかの判断まで機械にやらせると事故る。
+  useEffect(() => {
+    if (!gameState.qolToggles?.autoReincarnate) return undefined;
+    if (canAscendNow) return undefined;
+
+    if (truckEventModal) {
+      const t = setTimeout(() => handleProceedFromTruckModal(), 1000);
+      return () => clearTimeout(t);
+    }
+    if (creatorModal.open && creatorModal.mode === 'reincarnate') {
+      const t = setTimeout(() => handleConfirmCreator(), 600);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    gameState.qolToggles?.autoReincarnate,
+    canAscendNow,
+    truckEventModal,
+    creatorModal.open,
+    creatorModal.mode
+  ]);
   const ascensionGainPreview = calculateAscensionGain(gameState);
 
   const stageBadges = [
@@ -8651,29 +9115,7 @@ ${activeChObj.rewardText}`}
                             🏛️ 無制限投資
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-1">
-                            {[
-                              {
-                                id: 'endless_lab',
-                                name: '青空スポーツ科学研究所',
-                                desc: '全能力上限 +0.35/Lv',
-                                baseG: 40000,
-                                basePt: 140
-                              },
-                              {
-                                id: 'endless_ai',
-                                name: 'AI戦術解析スーパーコンピュータ',
-                                desc: '全能力成長 +2.5% & 閃き+0.3%/Lv',
-                                baseG: 50000,
-                                basePt: 180
-                              },
-                              {
-                                id: 'endless_fund',
-                                name: '青空グローバル育成基金',
-                                desc: '全試合戦力 +2%/Lv',
-                                baseG: 65000,
-                                basePt: 220
-                              }
-                            ].map((item) => {
+                            {ENDLESS_INVEST_DEF.map((item) => {
                               const lv = gameState.endlessInvest?.[item.id] || 0;
                               const calc = calcBulkPurchase(
                                 lv,
@@ -8683,10 +9125,10 @@ ${activeChObj.rewardText}`}
                                 gameState.tactics,
                                 item.baseG,
                                 item.basePt,
-                                1.38
+                                ENDLESS_INVEST_GROWTH
                               );
-                              const singleG = Math.floor(item.baseG * Math.pow(1.38, lv));
-                              const singlePt = Math.floor(item.basePt * Math.pow(1.38, lv));
+                              const singleG = Math.floor(item.baseG * Math.pow(ENDLESS_INVEST_GROWTH, lv));
+                              const singlePt = Math.floor(item.basePt * Math.pow(ENDLESS_INVEST_GROWTH, lv));
                               const ok = calc.count > 0;
                               return (
                                 <button
@@ -10183,6 +10625,114 @@ ${activeChObj.rewardText}`}
                 />
                 転生した直後に時間を止める（方針を決めてから再開できる）
               </label>
+
+              <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(gameState.qolToggles?.autoReincarnate)}
+                  onChange={(e) =>
+                    setGameState((prev) => ({
+                      ...prev,
+                      qolToggles: { ...prev.qolToggles, autoReincarnate: e.target.checked }
+                    }))
+                  }
+                  className="accent-sky-400"
+                />
+                引退したら自動でタイムリープする（演出とフレーバーはそのまま出る）
+              </label>
+
+              <div className="border-t border-slate-800 pt-1.5 space-y-1.5">
+                <div className="text-[9.5px] font-bold text-slate-300">あらかじめ決めておく</div>
+
+                <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(gameState.qolToggles?.autoCareerPath)}
+                    onChange={(e) =>
+                      setGameState((prev) => ({
+                        ...prev,
+                        qolToggles: { ...prev.qolToggles, autoCareerPath: e.target.checked }
+                      }))
+                    }
+                    className="accent-sky-400"
+                  />
+                  進路を自動で選ぶ（進路選択で止まらなくなる）
+                </label>
+
+                {gameState.qolToggles?.autoCareerPath && (
+                  <div className="flex gap-1 pl-4">
+                    {[
+                      { id: 'best', label: '上のカテゴリ優先' },
+                      { id: 'genome', label: '未取得ゲノム優先' }
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() =>
+                          setGameState((prev) => ({
+                            ...prev,
+                            qolToggles: { ...prev.qolToggles, autoPathMode: m.id }
+                          }))
+                        }
+                        className={`px-1.5 py-0.5 text-[9px] border cursor-pointer ${
+                          (gameState.qolToggles?.autoPathMode || 'best') === m.id
+                            ? 'bg-sky-800 border-sky-400 text-white font-bold'
+                            : 'bg-slate-900 border-slate-700 text-slate-400'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="text-[9px] text-slate-400 block" htmlFor="setting-partner">
+                    恋人（条件を満たしたらこの人に切り替える）
+                  </label>
+                  <select
+                    id="setting-partner"
+                    value={gameState.qolToggles?.preferredPartner || ''}
+                    onChange={(e) =>
+                      setGameState((prev) => ({
+                        ...prev,
+                        qolToggles: { ...prev.qolToggles, preferredPartner: e.target.value || null }
+                      }))
+                    }
+                    className="w-full bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100 text-[10px] focus:outline-none focus:border-sky-400"
+                  >
+                    <option value="">決めない（そのとき出会った人）</option>
+                    {Object.values(PARTNER_TYPES).map((pt) => (
+                      <option key={pt.id} value={pt.id}>
+                        {pt.name}（{pt.reqText}）
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[9px] text-slate-400 block" htmlFor="setting-euro">
+                    欧州に上がったときに行く国
+                  </label>
+                  <select
+                    id="setting-euro"
+                    value={gameState.qolToggles?.preferredEuroCountry || ''}
+                    onChange={(e) =>
+                      setGameState((prev) => ({
+                        ...prev,
+                        qolToggles: { ...prev.qolToggles, preferredEuroCountry: e.target.value || null }
+                      }))
+                    }
+                    className="w-full bg-slate-900 border border-slate-700 px-2 py-1 text-slate-100 text-[10px] focus:outline-none focus:border-sky-400"
+                  >
+                    <option value="">決めない</option>
+                    {Object.values(EURO_COUNTRIES).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}（{c.leagueName}）
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
             <p>
