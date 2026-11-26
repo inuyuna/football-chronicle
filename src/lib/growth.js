@@ -6,10 +6,10 @@
 //   実際にバランス調整で踏んだ。docs/REFACTOR_PLAN.md Phase 2-2。
 
 /** 限界突破の極意書を持っているときの、上限超過後の伸び率 */
-export const LIMIT_BREAK_OVER_RATIO = 1 / 15;
+export const LIMIT_BREAK_OVER_RATIO = 1 / 40;
 
 /** 何も持っていないときの、上限超過後の伸び率 */
-export const BASE_OVER_RATIO = 1 / 45;
+export const BASE_OVER_RATIO = 1 / 120;
 
 /**
  * 上限を超えたあとに、その成長量のうち何割が実際に乗るか。
@@ -41,5 +41,8 @@ export function overCapRatio(hasLimitBreak, challengeMult = 1) {
  */
 export function overCapDiminishing(val, cap) {
   const excessRatio = Math.max(0, (val - cap) / Math.max(8, cap));
-  return Math.max(1e-7, Math.pow(0.5, excessRatio * 2.0));
+  // v0.36 で 2.0 -> 3.5 に強めた。本人の指摘（2026-11-26）:
+  //   「能力値が限界に達してからそれ以上に強くなる部分の係数をもっともっと下げろ。
+  //     能力上限が意味を持たなくなっている」
+  return Math.max(1e-9, Math.pow(0.5, excessRatio * 3.5));
 }

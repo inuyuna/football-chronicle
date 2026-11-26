@@ -12,7 +12,8 @@
     "check:undef": "node scripts/check-undefined.mjs",
     "check": "npm run lint && npm run check:undef && npm run test && npm run build",
     "preview": "vite preview",
-    "measure": "vitest run --config vitest.measure.config.js"
+    "measure": "vitest run --config vitest.measure.config.js",
+    "postinstall": "node scripts/patch-rollup-wasm.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.73.0",
@@ -23,6 +24,7 @@
     "@emnapi/core": "^2.0.0-beta.2",
     "@emnapi/runtime": "^2.0.0-beta.2",
     "@napi-rs/wasm-runtime": "^1.2.6",
+    "@rollup/wasm-node": "^4.68.7",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26.6.6",

@@ -20,8 +20,9 @@ describe('overCapDiminishing', () => {
     expect(overCapDiminishing(100, 100)).toBeCloseTo(1, 5);
   });
 
-  it('上限と同じだけ超過すると 1/4 になる', () => {
-    expect(overCapDiminishing(200, 100)).toBeCloseTo(0.25, 3);
+  it('上限と同じだけ超過すると 1/11 程度まで落ちる', () => {
+    // 0.5 ^ 3.5 = 0.0884。v0.36 で 0.5^2.0 から強めた
+    expect(overCapDiminishing(200, 100)).toBeCloseTo(0.0884, 3);
   });
 
   it('超過が進むほど加速度的にきつくなる', () => {

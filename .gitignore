@@ -23,3 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 measure-result-*.json
+
+# Windows ARM64 の rollup 回避で退避した lock（scripts/patch-rollup-wasm.mjs 参照）
+package-lock.json.bak

@@ -33,7 +33,7 @@ export function softcap(value, threshold, strength = 0.6) {
 }
 
 /** 練習の成長倍率に使う閾値 */
-export const GROWTH_SOFTCAP = { threshold: 6, strength: 0.6 };
+export const GROWTH_SOFTCAP = { threshold: 4.5, strength: 0.42 };
 
 /** 試合の戦力倍率に使う閾値。試合は勝敗が離散なので、成長より少し緩める */
-export const POWER_SOFTCAP = { threshold: 8, strength: 0.7 };
+export const POWER_SOFTCAP = { threshold: 6, strength: 0.5 };

@@ -71,6 +71,26 @@ rolldown はネイティブバインディングを `.node` で読むのでビ�
 WASM 版（`@rolldown/binding-wasm32-wasi`）でも回避を試みたが、
 WASI が Windows パスを解決できず失敗した。この道は閉じている。
 
+### rollup のネイティブバイナリがブロックされる（2026-11-26 発生）
+
+```
+Error: An Application Control policy has blocked this file.
+  node_modules\@rollupollup-win32-arm64-msvcollup.win32-arm64-msvc.node
+```
+
+**`npm run build` も `npm run test` も全部落ちる。** vite も vitest も rollup を読むため。
+
+このマシンの Application Control ポリシーが、未署名の `.node` の DLL ロードを
+ブロックするようになったのが原因。rollup 4.x はフォールバックを持たない。
+
+`scripts/patch-rollup-wasm.mjs` が `postinstall` で走り、
+`node_modules/rollup` を `@rollup/wasm-node` に差し替える。
+Windows ARM64 のときだけ動くので、Vercel（Linux x64）には影響しない。
+
+- `package.json` の `overrides` では直らなかった（npm 11.13 で lock に反映されない）
+- 元の native 版は `node_modules/.rollup-native-backup` に退避してある
+- `npm install` のあとに同じエラーが出たら `node scripts/patch-rollup-wasm.mjs` を手で叩く
+
 ### 開発サーバー
 
 `Desktop\Claud\.claude\launch.json` の `football-chronicle` を使う。

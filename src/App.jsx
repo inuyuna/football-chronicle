@@ -58,7 +58,7 @@ const CURRENT_TUTORIAL_VERSION = 12;
 // 58→82→125→195→310→500→850 と掛け算で伸びるので、足し算では永久に
 // 追いつけなかった（12周してもカテゴリが1段も上がらない）。
 // 実測の根拠は docs/BALANCE_LOG.md。
-const GENERATION_CAP_GROWTH = 1.7;
+const GENERATION_CAP_GROWTH = 1.6;
 
 // オフライン進行で一度に進める最大ヶ月数。
 // 1ヶ月=1ティックなので、1倍速なら約12分ぶん。長く離れても
@@ -69,12 +69,18 @@ const MAX_OFFLINE_MONTHS = 480;
 const CONTRACT_KEEP_RATIO = 0.72;
 // 最下層（キッズスクール）でも契約がもらえなくなる総合力。ここで現役引退。
 const CONTRACT_FLOOR_RATING = 4.5;
+// メディア・代表アピールが出るようになるカテゴリ。
+// 本人の指摘（2026-11-26）:「一周目からメディア代表アピールあるの変だな。消すか」
+// 取材が来るのはプロ契約（J3以上）を結んでから。
+const MEDIA_MIN_CAT = 9;
 const ALL_DRILL_IDS = ['tech_drill', 'phy_drill', 'tactics_video', 'shoot_drill', 'mental_image'];
 
 // --- ポジション定義（全7種・転生時に選択） ---
 const POSITIONS = {
   CF: {
     id: 'CF',
+    // チームが決めた得点のうち、自分の得点・アシストになる割合
+    statShare: { goal: 0.58, assist: 0.14 },
     name: 'CF（センターFW）',
     role: '絶対的ストライカー',
     capRatio: { tec: 0.95, phy: 1.05, iq: 0.85, sht: 1.3 },
@@ -83,6 +89,7 @@ const POSITIONS = {
   },
   WG: {
     id: 'WG',
+    statShare: { goal: 0.4, assist: 0.34 },
     name: 'WG（ウイング）',
     role: '切り裂くドリブラー',
     capRatio: { tec: 1.25, phy: 1.05, iq: 0.85, sht: 1.05 },
@@ -91,6 +98,7 @@ const POSITIONS = {
   },
   OMF: {
     id: 'OMF',
+    statShare: { goal: 0.27, assist: 0.5 },
     name: 'OMF（トップ下）',
     role: '創造のファンタジスタ',
     capRatio: { tec: 1.25, phy: 0.8, iq: 1.2, sht: 0.95 },
@@ -99,6 +107,7 @@ const POSITIONS = {
   },
   CMF: {
     id: 'CMF',
+    statShare: { goal: 0.1, assist: 0.42 },
     name: 'CMF（ボランチ）',
     role: '中盤のダイナモ',
     capRatio: { tec: 1.05, phy: 1.05, iq: 1.2, sht: 0.85 },
@@ -107,6 +116,7 @@ const POSITIONS = {
   },
   SB: {
     id: 'SB',
+    statShare: { goal: 0.04, assist: 0.3 },
     name: 'SB（サイドバック）',
     role: '上下動する鉄人',
     capRatio: { tec: 1.0, phy: 1.2, iq: 1.05, sht: 0.85 },
@@ -115,6 +125,7 @@ const POSITIONS = {
   },
   CB: {
     id: 'CB',
+    statShare: { goal: 0.06, assist: 0.04 },
     name: 'CB（センターバック）',
     role: '最終ラインの要塞',
     capRatio: { tec: 0.85, phy: 1.3, iq: 1.15, sht: 0.75 },
@@ -123,6 +134,8 @@ const POSITIONS = {
   },
   GK: {
     id: 'GK',
+    // GKは点を取らない。宇宙規模に達したときだけ例外（simulateAutoMatch 参照）
+    statShare: { goal: 0.0, assist: 0.02 },
     name: 'GK（ゴールキーパー）',
     role: '最後の守護神',
     capRatio: { tec: 0.9, phy: 1.25, iq: 1.25, sht: 0.65 },
@@ -1786,6 +1799,8 @@ const UPGRADES_DEF = [
   {
     id: 'custom_spikes',
     name: '特注スパイク',
+    // 足型を取って作る特注品。強豪校やユースに入って初めて縁ができる
+    minCat: 4,
     baseG: 5000,
     basePt: 18,
     growth: 1.6,
@@ -1817,7 +1832,11 @@ const UPGRADES_DEF = [
   {
     id: 'sponsor_deal',
     name: '個人スポンサー契約',
-    minCat: 8,
+    // 本人の指摘（2026-11-26）:
+    //   「2週目とかのまだ弱いときに個人スポンサーとかつかないと思う」
+    // プロ契約（J3以上）＋ある程度の知名度がないと声は掛からない
+    minCat: 9,
+    minFans: 500,
     baseG: 18000,
     basePt: 50,
     growth: 1.72,
@@ -1828,7 +1847,10 @@ const UPGRADES_DEF = [
   {
     id: 'school_clinic',
     name: 'ジュニアクリニック主催',
+    // 人を集めて教える以上、プロの肩書きが要る
     minAge: 18,
+    minCat: 9,
+    minFans: 2000,
     baseG: 30000,
     basePt: 80,
     growth: 1.8,
@@ -2672,6 +2694,46 @@ const computeOptimalAutoList = (s) => {
 };
 
 // --- サブコンポーネント ---
+// 宿敵に5勝したときの報酬。
+//
+// 本人の指摘（2026-11-26）:
+//   「宿敵の好感ユニフォームの入手に手動クリックでのライバル勝利が5回必要のようだが、
+//     こういうのは自動クリックでも達成されるようにしろ」
+//
+// 以前は手動の challengeRival にしか書いていなかったので、
+// 敏腕秘書に任せていると永遠に取れなかった。
+// s を直接書き換える。呼び出し側は手動・自動のどちらでもよい。
+const applyRivalMilestone = (s, tierObj, wins, onToast) => {
+  if (!tierObj || wins < 5) return;
+
+  if (!s.rivalPerksUnlocked?.includes(tierObj.perkId)) {
+    s.rivalPerksUnlocked = [...(s.rivalPerksUnlocked || []), tierObj.perkId];
+    const caps = { ...(s.rivalPerkCaps || { tec: 0, phy: 0, iq: 0, sht: 0 }) };
+    if (tierObj.tier === 0) caps.iq += 4;
+    else if (tierObj.tier === 1) caps.phy += 7;
+    else if (tierObj.tier === 2) {
+      caps.tec += 10;
+      caps.phy += 10;
+      caps.iq += 10;
+      caps.sht += 10;
+    } else {
+      caps.tec += 18;
+      caps.phy += 18;
+      caps.iq += 18;
+      caps.sht += 18;
+    }
+    s.rivalPerkCaps = caps;
+    s.rivalCoopUnlocked = true;
+    s.storyFlavor = `🤝【宿敵との和解＆共闘タッグ結成】${tierObj.name}：${tierObj.coopQuote}`;
+    if (onToast) onToast(`🤝 ${tierObj.name}と共闘タッグ結成！`, tierObj.perkLabel, 'amber');
+  }
+
+  if (!s.unlockedCharms?.includes('charm_rival')) {
+    s.unlockedCharms = [...(s.unlockedCharms || []), 'charm_rival'];
+    if (onToast) onToast('🎽 絆のお守り獲得', '「宿敵の交換ユニフォーム」を獲得した！', 'amber');
+  }
+};
+
 const MiniBar = ({ label, current, max, colorClass, rateText }) => {
   const pct = Math.min(100, Math.max(0, (current / Math.max(1, max)) * 100));
   return (
@@ -3040,6 +3102,8 @@ export default function App() {
         peakRatingReached: 0,
         isRetired: false,
         categoryId: startCat,
+        // この人生で到達した最高カテゴリ。上位転生の条件判定に使う
+        peakCategoryId: startCat,
         triggeredEvents: [],
 
         level: 1,
@@ -4154,17 +4218,24 @@ export default function App() {
         globalPowerMult *
         underdogBoost;
 
-      // 1周目はチュートリアル。何をしても公式戦では勝てない、という体験を作る。
-      // 本人の評価（2026-11-19）:
-      //   「1週目はこれでいいかも。公式戦で1勝もできないその惨めさっていうものがよく伝わってる」
-      // 2周目以降は普通に戦えるので、ここは1周目だけの係数。
-      const isFirstLife = s.generation === 1 && (s.ascensionCount || 0) === 0;
+      // 序盤の周回は「才能がない」状態。何周かしないと戦えるようにならない。
+      //
+      // 本人の指摘（2026-11-26）:
+      //   「1週目から勝ったりゴールしたり活躍しすぎ。もっと激よわなんもできない選手だった
+      //     悔しさを2週目以降で晴らす構成。2週とか3週程度では全く才能が無いので
+      //     まだまだダメ選手って感じにしたい。2週目で勝ち越すような戦績ではダメ」
+      //
+      // 1周目 0.28 / 2周目 0.45 / 3周目 0.62 / 4周目 0.80 / 5周目以降は素。
+      // 上位転生を経ていれば、この縛りは外れる（もう別次元の存在なので）。
+      const EARLY_GEN_POWER = [0.28, 0.45, 0.62, 0.8];
+      const earlyGenScale =
+        (s.ascensionCount || 0) >= 1 ? 1.0 : EARLY_GEN_POWER[(s.generation || 1) - 1] ?? 1.0;
       const myTeamPower =
         (shootPower * posObj.matchWeight.shoot +
           midPower * posObj.matchWeight.mid +
           defPower * posObj.matchWeight.def) *
         4.0 *
-        (isFirstLife ? 0.42 : 1.0);
+        earlyGenScale;
       const ratio = myTeamPower / Math.max(1, oppPower);
 
       let myXg =
@@ -4215,8 +4286,18 @@ export default function App() {
         };
       }
 
-      const goalShare = ['CF', 'WG', 'OMF'].includes(s.position) ? 0.55 : 0.16;
-      const assistShare = ['OMF', 'WG', 'CMF', 'SB'].includes(s.position) ? 0.45 : 0.18;
+      // ポジションごとに取れる数字が違う。
+      // 本人の指摘（2026-11-26）:
+      //   「GKでもゴール数が増えていくのはおかしい。それぞれのポジションでスタッツは異なる。
+      //     GKなのに点が取れる＝無双、とするのはいいが、
+      //     宇宙規模の強さになった時でないとおかしい」
+      //
+      // 銀河系リーグ（cat15）以上、または上位転生を経た存在だけが、
+      // ポジションを無視して点を取れる。
+      const baseShare = posObj.statShare || { goal: 0.2, assist: 0.2 };
+      const isCosmic = s.categoryId >= 15 || (s.ascensionCount || 0) >= 1;
+      const goalShare = isCosmic ? Math.max(baseShare.goal, 0.4) : baseShare.goal;
+      const assistShare = isCosmic ? Math.max(baseShare.assist, 0.3) : baseShare.assist;
       let myG = 0;
       let myA = 0;
       for (let i = 0; i < myGoals; i++) {
@@ -4448,10 +4529,15 @@ export default function App() {
           const effMin = ascCount >= 2 ? 5 : ascCount >= 1 && i >= 7 ? 12 : defaultMin;
           unlockedByAge = s.age >= effMin;
         } else if (i === 9 || i === 10 || i === 11) {
-          const effMin = ascCount >= 2 ? 5 : ascCount >= 1 ? 12 : newRating >= nextCat.reqRating * 1.25 ? 12 : 15;
+          // プロ契約。飛び級でも16歳、通常は18歳（高卒）から。
+          // 本人の指摘（2026-11-26）:
+          //   「3週目で13歳でJ1デビュー、18歳で欧州メガクラブ、23歳でW杯優勝みたいな
+          //     無双になってしまった。これは進行速度、成長速度が速すぎる」
+          const effMin = ascCount >= 2 ? 5 : ascCount >= 1 ? 15 : newRating >= nextCat.reqRating * 1.5 ? 16 : 18;
           unlockedByAge = s.age >= effMin;
         } else if (i === 12 || i === 13 || i === 14) {
-          const effMin = ascCount >= 3 ? 5 : ascCount >= 2 ? 12 : ascCount >= 1 ? 15 : 17;
+          // 海外・代表。労働許可の都合もあって18歳が現実的な下限
+          const effMin = ascCount >= 3 ? 5 : ascCount >= 2 ? 12 : ascCount >= 1 ? 16 : 18;
           unlockedByAge = s.age >= effMin;
         } else if (i === 15 || i === 16) {
           const effMin = ascCount >= 3 ? 5 : 12;
@@ -4463,6 +4549,9 @@ export default function App() {
 
         if (unlockedByAge && newRating >= nextCat.reqRating) {
           s.categoryId = i;
+          // 到達した最高カテゴリ。衰えて降格してもここは下がらない。
+          // 上位転生の条件判定に使う（寿命で引退したあとでも転生できるように）
+          s.peakCategoryId = Math.max(s.peakCategoryId || 0, i);
           s.clubName = nextCat.clubDefault;
           const bonus = Math.round(nextCat.baseReward * 1.6);
           s.money += bonus;
@@ -4762,6 +4851,7 @@ export default function App() {
         for (const upg of UPGRADES_DEF) {
           if (upg.minAge && newState.age < upg.minAge) continue;
           if (upg.minCat && newState.categoryId < upg.minCat) continue;
+          if (upg.minFans && (newState.fans || 0) < upg.minFans) continue;
           const curLv = newState.upgrades?.[upg.id] || 0;
           if (curLv >= upg.maxLv) continue;
           const costG = Math.floor(upg.baseG * Math.pow(upg.growth, curLv));
@@ -4827,8 +4917,14 @@ export default function App() {
               rating: Math.round(rivPow * 1.12 + 8)
             };
             newState.careerRivalWins = (newState.careerRivalWins || 0) + 1;
-            if ((newState.rival.winsAgainst || 0) >= 5 && !newState.rivalCoopUnlocked) {
-              newState.rivalCoopUnlocked = true;
+            if (newState.categoryId < 12) {
+              const autoTier = RIVAL_TIERS[newState.rival?.tierIdx || 0];
+              applyRivalMilestone(
+                newState,
+                autoTier,
+                newState.rival.winsAgainst || 0,
+                suppressToast ? null : pushToast
+              );
             }
           }
         }
@@ -4946,7 +5042,11 @@ export default function App() {
               pushToast('👶 第一子誕生！', 'この子が16歳になったら、自分からサッカーの道を選ぶ', 'pink');
             }
           }
-          if (newState.age >= 16 && newState.mental >= newState.maxMental * 0.75) {
+          if (
+            newState.age >= 16 &&
+            newState.categoryId >= MEDIA_MIN_CAT &&
+            newState.mental >= newState.maxMental * 0.75
+          ) {
             newState.mental = Number((newState.mental - 12).toFixed(2));
             newState.fans += Math.round(15 + CATEGORIES[newState.categoryId].fanGain * 1.5);
             newState.money += Math.round(4500 + CATEGORIES[newState.categoryId].baseReward * 0.75);
@@ -6015,8 +6115,15 @@ export default function App() {
         mental: Number((prev.mental - 10).toFixed(2))
       };
 
-      // 乱数は next の種を進める。prev を触ると前の state を汚す
-      const isWin = myPow >= rivalPow * 0.94 || nextRandom(next) < (myPow / Math.max(1, rivalPow)) * 0.45;
+      // 勝敗は運ではなく力量で決まる。
+      //
+      // 本人の指示（2026-11-26）:
+      //   「転生するというストーリー上、勝てる相手には絶対勝てるし
+      //     そうでない相手には絶対勝てない、というようなより無双系のアレンジがいい」
+      //
+      // 同じ相手に何度挑んでも、能力が足りないうちは一度も勝てない。
+      // 足りた瞬間から確実に勝てるようになる。
+      const isWin = myPow >= rivalPow * 0.94;
 
       if (isWin) {
         const nextWins = (prev.rival?.winsAgainst || 0) + 1;
@@ -6036,32 +6143,7 @@ export default function App() {
           : `🔥【宿敵撃破・通算${nextWins}勝目】${tierObj.name}が膝をついて悔しがる！「クソッ…次は絶対に負けないぞ！」`;
         next.storyFlavor = winQuote;
 
-        if (!isEuro && nextWins >= 5 && !next.rivalPerksUnlocked?.includes(tierObj.perkId)) {
-          next.rivalPerksUnlocked = [...(next.rivalPerksUnlocked || []), tierObj.perkId];
-          const nextCaps = { ...(next.rivalPerkCaps || { tec: 0, phy: 0, iq: 0, sht: 0 }) };
-          if (tierObj.tier === 0) nextCaps.iq += 4;
-          else if (tierObj.tier === 1) nextCaps.phy += 7;
-          else if (tierObj.tier === 2) {
-            nextCaps.tec += 10;
-            nextCaps.phy += 10;
-            nextCaps.iq += 10;
-            nextCaps.sht += 10;
-          } else {
-            nextCaps.tec += 18;
-            nextCaps.phy += 18;
-            nextCaps.iq += 18;
-            nextCaps.sht += 18;
-          }
-          next.rivalPerkCaps = nextCaps;
-          next.rivalCoopUnlocked = true;
-          next.storyFlavor = `🤝【宿敵との和解＆共闘タッグ結成】${tierObj.name}：${tierObj.coopQuote}`;
-          pushToast(`🤝 ${tierObj.name}と共闘タッグ結成！`, tierObj.perkLabel, 'amber');
-        }
-
-        if (nextWins >= 5 && !next.unlockedCharms.includes('charm_rival')) {
-          next.unlockedCharms = [...next.unlockedCharms, 'charm_rival'];
-          pushToast('🎽 絆のお守り獲得', '「宿敵の交換ユニフォーム」を獲得した！', 'amber');
-        }
+        if (!isEuro) applyRivalMilestone(next, tierObj, nextWins, pushToast);
         addLogMsg(next, `⚔️【宿敵撃破】「${rivalName}」との1vs1対決に勝利！（賞金+${formatYen(rewardG)}）`, 'match');
       } else {
         applyStatGrowth(next, 'tec', 0.2);
@@ -6250,6 +6332,7 @@ export default function App() {
   const doMediaAppeal = () => {
     setGameState((prev) => {
       if (prev.age < 16 || prev.mental < 12) return prev;
+      if ((prev.categoryId || 0) < MEDIA_MIN_CAT) return prev;
       if (prev.activeChallenge === 'ch_lone_wolf' || prev.activeChallenge === 'ch_ascetic_god') {
         return prev;
       }
@@ -6720,11 +6803,11 @@ export default function App() {
   };
 
   // --- 強制タイムリープモーダル確認 ---
-  const handleProceedFromTruckModal = () => {
+  const handleProceedFromTruckModal = (mode = 'reincarnate') => {
     if (Date.now() - modalOpenedAtRef.current < 850) return;
     setTruckEventModal(null);
     setGameState((prev) => ({ ...prev, pendingModal: null }));
-    openCreatorModal('reincarnate');
+    openCreatorModal(mode);
   };
 
   // --- 選手クリエイトモーダル起動 ---
@@ -7247,7 +7330,17 @@ export default function App() {
   // 55% で頭打ちにする。超えると到達不能になって詰む。
   const ascReqCrystalLv = Math.min(Math.floor(MAX_LEGACY_LV_SUM * 0.55), 28 + ascCount * 12);
   const ascReqCatId = Math.min(18, 11 + ascCount);
-  const canAscendNow = legLvSum >= ascReqCrystalLv && gameState.categoryId >= ascReqCatId;
+  // 条件は「いまの所属」ではなく「この人生で到達した最高カテゴリ」で見る。
+  //
+  // 本人の指摘（2026-11-26）:
+  //   「寿命になると強制的に第一転生されるのは困る。第二転生の最後のアイテムが
+  //     なかなか買えないので、聖杯の数を集めようと思って何度か第二転生を
+  //     周回するつもりだった」
+  //
+  // 衰えて降格してから引退するので、いまの所属で判定すると
+  // 条件を満たしていた人生でも上位転生できずに第一転生へ流されていた。
+  const reachedCatId = Math.max(gameState.categoryId || 0, gameState.peakCategoryId || 0);
+  const canAscendNow = legLvSum >= ascReqCrystalLv && reachedCatId >= ascReqCatId;
   const ascensionGainPreview = calculateAscensionGain(gameState);
 
   const stageBadges = [
@@ -8238,7 +8331,7 @@ ${activeChObj.rewardText}`}
                         </button>
                       )}
 
-                      {gameState.age >= 16 && (
+                      {gameState.age >= 16 && gameState.categoryId >= MEDIA_MIN_CAT && (
                         <button
                           onClick={doMediaAppeal}
                           disabled={isSocialDisabledByCh || gameState.mental < 12}
@@ -8494,6 +8587,7 @@ ${activeChObj.rewardText}`}
                         {UPGRADES_DEF.filter((u) => {
                           if (u.minAge && gameState.age < u.minAge) return false;
                           if (u.minCat && gameState.categoryId < u.minCat) return false;
+                          if (u.minFans && (gameState.fans || 0) < u.minFans) return false;
                           const curLv = gameState.upgrades?.[u.id] || 0;
                           if (hideCompleted && curLv >= u.maxLv) return false;
                           return true;
@@ -10012,6 +10106,14 @@ ${activeChObj.rewardText}`}
             <div className="bg-purple-950/50 border border-purple-700 p-2 text-[10px] text-purple-200 font-mono">
               獲得継承結晶: 💎 +{formatNum(legacyGain)}（次の周回で倍速解放や才能上限を強化しよう！）
             </div>
+            {canAscendNow && (
+              <button
+                onClick={() => handleProceedFromTruckModal('ascend')}
+                className="w-full py-2 bg-amber-600 hover:bg-amber-500 border border-amber-300 text-slate-950 font-extrabold text-xs cursor-pointer"
+              >
+                👑 高次元転生する（超越の聖杯 +{formatNum(ascensionGainPreview)}）
+              </button>
+            )}
             <button
               onClick={() => handleProceedFromTruckModal()}
               className="w-full py-2 bg-purple-700 hover:bg-purple-600 border border-purple-300 text-white font-bold text-xs cursor-pointer"
