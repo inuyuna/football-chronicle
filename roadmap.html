@@ -86,7 +86,7 @@
 
 <div class="wrap">
   <header>
-    <p class="eyebrow">Football Chronicle · v0.35 時点</p>
+    <p class="eyebrow">Football Chronicle · v0.36 時点</p>
     <h1>ここから何を作るか</h1>
     <p>プレイして出てきた指摘を、依存関係と規模で並べ直したもの。上から順に片付ける。各版のテーマは1つに絞ってある。</p>
   </header>
@@ -166,15 +166,47 @@
 
     <div class="rel">
       <div class="ver">
-        <span class="state" style="color:var(--now)">次</span>
+        <span class="state" style="color:var(--done)">完了</span>
         <b>v0.36</b>
-        <div class="theme">v0.3 からの持ち越し</div>
+        <div class="theme">まだ速い・まだ強いを削る</div>
+      </div>
+      <div class="card done">
+        <ul class="items">
+          <li><span class="mark">✓</span><div><span class="t">序盤の周回はまだ才能がない</span><div class="d">試合戦力の係数を 1周目0.28 / 2周目0.45 / 3周目0.62 / 4周目0.80 に。実機で1周目は11試合0勝0ゴール</div><div class="q">「2週とか3週程度では全く才能が無いのでまだまだダメ選手って感じにしたい。2週目で勝ち越すような戦績ではダメ」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">13歳J1デビューを止めた</span><div class="d">プロ契約は飛び級16歳・通常18歳、海外と代表は18歳から</div><div class="q">「3週目で13歳でJ1デビュー、18歳で欧州メガクラブ、23歳でW杯優勝みたいな無双になってしまった」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">能力上限に意味を戻した</span><div class="d">上限超過の係数を 1/45→1/120、逓減を 0.5^(超過×2)→0.5^(超過×3.5)。上限の2倍に達した時点で練習1回の伸びは素の0.07%</div><div class="q">「能力値が限界に達してからそれ以上に強くなる部分の係数をもっともっと下げろ」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">寿命で強制的に第一転生される問題</span><div class="d">上位転生の条件を「到達した最高カテゴリ」で判定するようにした。衰えて降格してから引退するので、条件を満たしていた人生でも転生できなかった。引退モーダルからも直接選べる</div><div class="q">「寿命になると強制的に第一転生されるのは困る」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">自動購入が1つずつだった</span><div class="d">道具・結晶強化・ブレイクスルーを「買えるものは全部その場で」に</div><div class="q">「買ってる間に年を取ってる」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">事業の代理人（聖杯）</span><div class="d">無制限投資・蒼空FC・ブランド・スクール巡業を自動運営</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">あらかじめ決めておく</span><div class="d">進路・恋人・欧州の国を事前設定。自動タイムリープも追加（演出とフレーバーはそのまま出る）</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">GKが点を取らなくなった</span><div class="d">得点・アシストの配分をポジション定義に。銀河系リーグ以上か上位転生後だけが例外</div><div class="q">「GKなのに点が取れる＝無双、とするのはいいが、宇宙規模の強さになった時でないとおかしい」</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">力量に合わない買い物を止めた</span><div class="d">個人スポンサーはJ3＋ファン500、クリニックはJ3＋ファン2000、特注スパイクは強豪校以上、メディアアピールはJ3以上</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">宿敵は運で決まらない</span><div class="d">確率の項を外した。足りないうちは一度も勝てず、足りた瞬間から確実に勝つ。5勝の報酬も自動で取れるように</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">結晶は持っているだけで効く</span><div class="d">対数。1万で+4.8%。使い道がなくなっても貯める意味が残る</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">ひとつの能力を突き詰める価値</span><div class="d">最大能力が他の平均の4倍で試合戦力+45%。満遍なく上げると一切つかない</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">桁違いのゲノム9種</span><div class="d">10万ゴール / 100万勝 / 1億試合 / 50万守備出場 / 1億回の反復 / 1万年の現役 / 1万人の師 / 一点突破。前線固定にならないよう守備・出場・練習量にも同じ重さで</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">進路ゲノムの上限が上位転生で5倍・10倍</span><div class="d">コンプした進路をもう一度育てる理由になる</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">装備枠は最初1つ、最後は全部</span><div class="d">お守り7・特性9まで拡張できるようにした</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">4大リーグ以外を6か国</span><div class="d">オランダ・ポルトガル・ベルギー・トルコ・ブラジル・アルゼンチン。稼ぎは落ちるが専用ゲノムと移籍フレーバーがある。リーグ効果をif分岐からデータへ移した</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">エンディング本文の矛盾</span><div class="d">13歳の選手に「最後の試合」と出ていた。年齢を決め打ちしない文に書き直した</div></div></li>
+          <li><span class="mark">✓</span><div><span class="t">ゲノム一覧を5グループに</span><div class="d">64種になったので 基礎 / 体格 / 進路 / リーグ / 神話 に分けた</div></div></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="rel">
+      <div class="ver">
+        <span class="state" style="color:var(--now)">次</span>
+        <b>v0.37</b>
+        <div class="theme">終盤に目標を作る</div>
       </div>
       <div class="card now">
         <ul class="items">
           <li><span class="mark">1</span><div><span class="t">第3段階で聖杯強化もリセット<i class="size l">大</i></span><div class="d">「記憶も含めて失うことで新たな力を得る」の実装。いまは文面だけ。自動購入を失って買い直すサイクルもここに乗る</div><div class="q">「三次転生では『記憶も含めて失うことで、新たな力を得るタイムリープ』って設定でいくか」</div></div></li>
-          <li><span class="mark">2</span><div><span class="t">要素を揃えた状態の計測<i class="size m">中</i></span><div class="d">いまの計測は結晶4種しか買わないので、ソフトキャップが効いているか数字で確認できない</div></div></li>
-          <li><span class="mark">3</span><div><span class="t">初期資金を意味のあるものに<i class="size l">大</i></span><div class="d">転生直後からすぐ稼げるので、初期資金が数年で無意味になる。子ども時代（5〜14歳）にしか買えないもの、幼少期の投資が後半に効く仕組みが要る</div><div class="q">「転生後すぐどんどん強くなって稼げて、初期資金なんてすぐ関係なくなるゲームバランスではある。うまく処理したい」</div></div></li>
+          <li><span class="mark">2</span><div><span class="t">コンプ後にやることがない<i class="size l">大</i></span><div class="d">v0.36 で桁違いゲノム9種・リーグゲノム10種・進路上限10倍を足したが、第3段階以降の目標そのものはまだ無い</div><div class="q">「第二転生とゲノムとかのコンプリート後、ゲーム内では完全にやることがなくなったっぽい」</div></div></li>
+          <li><span class="mark">3</span><div><span class="t">要素を揃えた状態の計測<i class="size m">中</i></span><div class="d">いまの計測は結晶4種しか買わないので、v0.36 の変更の効きが数字で確認できない</div></div></li>
+          <li><span class="mark">4</span><div><span class="t">初期資金を意味のあるものに<i class="size l">大</i></span><div class="d">転生直後からすぐ稼げるので、初期資金が数年で無意味になる。子ども時代にしか買えないものが要る</div></div></li>
+          <li><span class="mark">5</span><div><span class="t">UIの整理<i class="size l">大</i></span><div class="d">ゲノムはグループ分けしたが、投資・交流まわりはまだ詰まっている</div><div class="q">「今でもすでにいろいろごちゃごちゃしているのでうまくまとめていきたい」</div></div></li>
         </ul>
       </div>
     </div>
