@@ -58,6 +58,29 @@ const CURRENT_TUTORIAL_VERSION = 12;
 // 58→82→125→195→310→500→850 と掛け算で伸びるので、足し算では永久に
 // 追いつけなかった（12周してもカテゴリが1段も上がらない）。
 // 実測の根拠は docs/BALANCE_LOG.md。
+//
+// v0.4 でS字にした。本人が言葉にしたこのゲームの芯（2026-11-28）:
+//
+//   「主人公はサッカーが好きでしょうがないが、全く才能がない。
+//     人生を何周かしたくらいでは、全く活躍できないし、技術も本当にひどい。
+//     （中略）本当に、ゲームの序盤は勝てない。ただ少しずつ勝てるようになっていく。
+//     ほんの少しずつ強くなっていく。タイムリープを行うごとに
+//     ほんの少しずつできることが増えていく」
+//
+// 才能ゼロの人間が同じ人生を繰り返したとき、最初の数周で届く場所は
+// たかが知れている。8周目までは 1.17倍ずつしか伸びない。
+// そこを越えてから、積み上げた知識が効き始めて 1.6倍ずつになる。
+//
+//   周回  上限の土台   総合力の目安(CF)   届くカテゴリ
+//     2      7.0            29            地域ジュニア
+//     5     11.2            46            名門ユース・強豪校
+//     8     17.9            74            大学
+//    10     28.7 * 1.6      190           JFL
+//    12      117            486           J2
+//    15      481          2,000           欧州CC
+//    18    2,000          8,300           銀河系
+const EARLY_GEN_CAP_GROWTH = 1.17;
+const EARLY_GEN_LIMIT = 8;
 const GENERATION_CAP_GROWTH = 1.6;
 
 // オフライン進行で一度に進める最大ヶ月数。
@@ -73,6 +96,57 @@ const CONTRACT_FLOOR_RATING = 4.5;
 // 本人の指摘（2026-11-26）:「一周目からメディア代表アピールあるの変だな。消すか」
 // 取材が来るのはプロ契約（J3以上）を結んでから。
 const MEDIA_MIN_CAT = 9;
+
+// 進行速度と一時停止は localStorage に残す。
+//
+// 本人の指摘（2026-11-28）:
+//   「リロードであるとか、タイムリープの何かの操作をしたときに、
+//     転生後に停止して8倍速も解除されるような部分があるが、
+//     これは設定を残すなりして、一度設定したらその設定から変わらないようにしてもらいたい」
+//
+// 速度は UI の state（useState）だったので、リロードでも転生でも 1x に戻っていた。
+const SPEED_KEY = 'football_chronicle_speed';
+const PAUSE_KEY = 'football_chronicle_paused';
+
+// テストプレイ用の 100倍速。
+// `?dev=inuyuna` を一度踏むと localStorage に残り、以降ずっと 100x ボタンが出る。
+// 公開ビルドにも入っているが、URL を知らない人には出ない。
+const DEV_KEY = 'football_chronicle_dev';
+const DEV_QUERY_VALUE = 'inuyuna';
+const TURBO_SPEED = 100;
+// 100倍速は 1ティックで 10ヶ月進める。
+// 10ms 間隔で回すと React の再レンダーが追いつかないため、
+// 間隔は 100ms のままにして、中で複数月まとめて進める。
+const TURBO_STEPS = 10;
+const TURBO_TICK_MS = 100;
+
+const readDevUnlocked = () => {
+  try {
+    if (typeof window === 'undefined') return false;
+    const q = new URLSearchParams(window.location.search).get('dev');
+    if (q === DEV_QUERY_VALUE) localStorage.setItem(DEV_KEY, '1');
+    return localStorage.getItem(DEV_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const readSavedSpeed = () => {
+  try {
+    const v = Number(localStorage.getItem(SPEED_KEY));
+    return [1, 2, 4, 8, TURBO_SPEED].includes(v) ? v : 1;
+  } catch {
+    return 1;
+  }
+};
+
+const readSavedPaused = () => {
+  try {
+    return localStorage.getItem(PAUSE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
 
 // 無制限投資。上限がなく、買うほど高くなる。
 // JSX の中に直書きされていたものを定数にした（自動購入からも使うため）。
@@ -2668,7 +2742,12 @@ const computeIndividualStatCaps = (
   age = 18
 ) => {
   const isFirstGen = generation === 1 && ascensionCount === 0;
-  const baseCap = isFirstGen ? 6.2 : 7.0 * Math.pow(GENERATION_CAP_GROWTH, generation - 2);
+  // 序盤はほとんど伸びず、8周を越えたところから加速する（S字）
+  const earlySteps = Math.max(0, Math.min(generation, EARLY_GEN_LIMIT) - 2);
+  const lateSteps = Math.max(0, generation - EARLY_GEN_LIMIT);
+  const baseCap = isFirstGen
+    ? 6.2
+    : 7.0 * Math.pow(EARLY_GEN_CAP_GROWTH, earlySteps) * Math.pow(GENERATION_CAP_GROWTH, lateSteps);
   // 才能限界突破は Lv が上がるほど1Lvの効き方が大きくなる（累進）。
   // 線形 +2.0/Lv だと、コストが指数で伸びるのに効果が線形なので
   // 必ずどこかで死ぬ。実測でも買う価値がなかった（docs/BALANCE_LOG.md ⑦⑧）。
@@ -3292,7 +3371,7 @@ export default function App() {
         preferredEuroCountry: null,
         autoReincarnate: false,
         hideCompleted: false,
-        pauseOnRebirth: true
+        pauseOnRebirth: false
       },
       preChallengeSnapshot = null
     ) => {
@@ -3481,7 +3560,10 @@ export default function App() {
           preferredEuroCountry: qolToggles.preferredEuroCountry || null,
           autoReincarnate: Boolean(qolToggles.autoReincarnate),
           // 転生した直後に時間を止めるか。止めれば落ち着いて方針を決められる
-          pauseOnRebirth: qolToggles.pauseOnRebirth !== undefined ? Boolean(qolToggles.pauseOnRebirth) : true,
+          // 既定は「止めない」。
+          // 本人の指摘（2026-11-28）:「転生後に停止して8倍速も解除されるような部分があるが、
+          // これは設定を残すなりして、一度設定したらその設定から変わらないようにしてもらいたい」
+          pauseOnRebirth: Boolean(qolToggles.pauseOnRebirth),
           hideCompleted: Boolean(qolToggles.hideCompleted)
         },
         hallOfFame,
@@ -3809,8 +3891,9 @@ export default function App() {
   });
 
   // UI状態
-  const [gameSpeed, setGameSpeed] = useState(1);
-  const [isPaused, setIsPaused] = useState(false);
+  const [gameSpeed, setGameSpeed] = useState(readSavedSpeed);
+  const [isPaused, setIsPaused] = useState(readSavedPaused);
+  const [devUnlocked] = useState(readDevUnlocked);
   const [bottomTab, setBottomTab] = useState('matches');
   const [investSubTab, setInvestSubTab] = useState('gear');
   const [genomeSubTab, setGenomeSubTab] = useState('active');
@@ -3846,7 +3929,25 @@ export default function App() {
     if (gameSpeed === 2 && (gameState.legacyUpgrades?.speed_2x || 0) < 1) setGameSpeed(1);
     if (gameSpeed === 4 && (gameState.legacyUpgrades?.speed_4x || 0) < 1) setGameSpeed(1);
     if (gameSpeed === 8 && (gameState.ascensionUpgrades?.speed_8x || 0) < 1) setGameSpeed(1);
-  }, [gameSpeed, gameState.legacyUpgrades, gameState.ascensionUpgrades]);
+    if (gameSpeed === TURBO_SPEED && !devUnlocked) setGameSpeed(1);
+  }, [gameSpeed, devUnlocked, gameState.legacyUpgrades, gameState.ascensionUpgrades]);
+
+  // 速度と一時停止を残す。リロードしても転生しても、選んだ設定のまま
+  useEffect(() => {
+    try {
+      localStorage.setItem(SPEED_KEY, String(gameSpeed));
+    } catch {
+      // プライベートモードなどで書けなくても動作には影響しない
+    }
+  }, [gameSpeed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PAUSE_KEY, isPaused ? '1' : '0');
+    } catch {
+      // 同上
+    }
+  }, [isPaused]);
 
   // ゲームループが積んだモーダル要求を取り出して開く
   useEffect(() => {
@@ -4543,8 +4644,6 @@ export default function App() {
 
       const streakOppScale = 1 + Math.min(0.65, (s.winStreak || 0) * 0.04);
       const rating = getTotalRating(s);
-      const dynamicFloor = Math.max(cat.oppPower, rating * 0.62);
-      const oppPower = dynamicFloor * streakOppScale * (isCupMatch ? 1.15 : 1.0);
 
       const isSoloCarry = s.activeChallenge === 'ch_solo_carry' || s.activeChallenge === 'ch_ascetic_god';
       const mates = isSoloCarry ? {} : s.clubMates || {};
@@ -4635,8 +4734,11 @@ export default function App() {
         legacyHoardMult(s.legacyPoints) *
         specializationMult(s.stats);
 
+      // 格上が相手のときのボーナス。
+      // 相手の強さ（oppPower）はこの下で決めるので、ここではカテゴリの基準値で見る。
+      const isUnderdogMatch = cat.oppPower > rating;
       const underdogBoost =
-        oppPower > rating
+        isUnderdogMatch
           ? 1 +
             (g.rival_crusher_dna || 0) * 0.035 +
             (g.league_england_dna || 0) * 0.03 +
@@ -4711,17 +4813,34 @@ export default function App() {
       //     悔しさを2週目以降で晴らす構成。2週とか3週程度では全く才能が無いので
       //     まだまだダメ選手って感じにしたい。2週目で勝ち越すような戦績ではダメ」
       //
-      // 1周目 0.28 / 2周目 0.45 / 3周目 0.62 / 4周目 0.80 / 5周目以降は素。
+      // 何周かしたくらいでは、まだ戦えない。
+      // 1周目 0.22 から始めて、9周目でようやく素に戻る。
       // 上位転生を経ていれば、この縛りは外れる（もう別次元の存在なので）。
-      const EARLY_GEN_POWER = [0.28, 0.45, 0.62, 0.8];
+      const EARLY_GEN_POWER = [0.22, 0.3, 0.38, 0.47, 0.57, 0.68, 0.8, 0.92];
       const earlyGenScale =
         (s.ascensionCount || 0) >= 1 ? 1.0 : EARLY_GEN_POWER[(s.generation || 1) - 1] ?? 1.0;
-      const myTeamPower =
+      // 周回係数を掛ける前の出力。相手の追随はこちらを基準にする。
+      // 係数込みの値を基準にすると、相手も同じだけ弱くなって戦力比が変わらず、
+      // 序盤の「勝てない」が消える（実測で5周目の勝率が59%になっていた）。
+      const rawMyPower =
         (shootPower * posObj.matchWeight.shoot +
           midPower * posObj.matchWeight.mid +
           defPower * posObj.matchWeight.def) *
-        4.0 *
-        earlyGenScale;
+        4.0;
+      const myTeamPower = rawMyPower * earlyGenScale;
+
+      // 相手の強さ。
+      //
+      // カテゴリ固有の値を下限に、こちらの出力の一定割合までは必ずついてくる。
+      // 0.74 なら戦力比は最大 1.35 までしか開かない＝勝ち越せるが圧勝はしない。
+      // 上位転生を経ていれば 0.45 まで緩み、桁違いの無双ができるようになる。
+      //
+      // 旧式は rating（能力値の合計）の 0.62倍だった。
+      // 倍率が相手に反映されないので、実測で 250試合248勝になっていた。
+      const OPP_CHASE = (s.ascensionCount || 0) >= 1 ? 0.45 : 0.74;
+      const dynamicFloor = Math.max(cat.oppPower, rawMyPower * OPP_CHASE, rating * 0.5);
+      const oppPower = dynamicFloor * streakOppScale * (isCupMatch ? 1.15 : 1.0);
+
       const ratio = myTeamPower / Math.max(1, oppPower);
 
       let myXg =
@@ -6301,7 +6420,11 @@ export default function App() {
       return;
     }
 
-    const tickMs = Math.max(125, Math.floor(1000 / gameSpeed));
+    // 100倍速だけは「1ティックで複数月」。間隔を詰めると再レンダーが追いつかない
+    const isTurbo = gameSpeed >= TURBO_SPEED;
+    const tickMs = isTurbo ? TURBO_TICK_MS : Math.max(125, Math.floor(1000 / gameSpeed));
+    const steps = isTurbo ? TURBO_STEPS : 1;
+
     const timer = setInterval(() => {
       setGameState((prev) => {
         if (prev.isRetired) return prev;
@@ -6319,8 +6442,15 @@ export default function App() {
         // setGameState の updater は非同期に実行されるため、外側のローカル変数へ
         // 書いて直後に読む形では常に null になり、モーダルが永久に捨てられる。
         // 返ってきたときだけ積む。null で上書きしない。
-        const requested = advanceOneMonth(next);
-        if (requested) next.pendingModal = requested;
+        for (let i = 0; i < steps; i++) {
+          if (next.isRetired || next.pendingUnlocks || next.pendingEnding) break;
+          // 100倍速で1ティックに10回ぶんのトーストが飛ぶと画面が埋まる
+          const requested = advanceOneMonth(next, { suppressToast: isTurbo && i > 0 });
+          if (requested) {
+            next.pendingModal = requested;
+            break;
+          }
+        }
         return next;
       });
     }, tickMs);
@@ -7530,7 +7660,7 @@ export default function App() {
   // --- 転生・新規開始確定（第二転生以降のタイムリープ趣旨リセット＆フレーバーテキスト強化！） ---
   const handleConfirmCreator = () => {
     // 転生直後に時間を止めるか（設定で切り替えられる）
-    if (creatorModal.mode !== 'new' && gameState.qolToggles?.pauseOnRebirth !== false) {
+    if (creatorModal.mode !== 'new' && gameState.qolToggles?.pauseOnRebirth === true) {
       setIsPaused(true);
     }
 
@@ -8043,6 +8173,36 @@ export default function App() {
   const reachedCatId = Math.max(gameState.categoryId || 0, gameState.peakCategoryId || 0);
   const canAscendNow = legLvSum >= ascReqCrystalLv && reachedCatId >= ascReqCatId;
 
+  // --- 開いたままの進路モーダルを自動で選ぶ ---
+  //
+  // 進路の自動選択は advanceOneMonth の中（進路が発生した瞬間）で判定している。
+  // そのため「モーダルが出ている状態で設定を ON にする」と、
+  // そのモーダルの前で止まったままになっていた。
+  // ここで拾って、誤爆防止のガード（850ms）を越えてから選ぶ。
+  useEffect(() => {
+    if (!gameState.qolToggles?.autoCareerPath) return undefined;
+    if (!careerChoiceModal) return undefined;
+
+    const opts = careerChoiceModal.options || [];
+    if (opts.length === 0) return undefined;
+
+    const open = opts.filter((o) => o.unlocked);
+    const pickFrom = open.length > 0 ? open : opts;
+    const mode = gameState.qolToggles?.autoPathMode || 'best';
+    let picked = [...pickFrom].reverse()[0];
+    if (mode === 'genome') {
+      const notMastered = [...pickFrom]
+        .reverse()
+        .find((o) => (gameState.genomes?.[o.genomeId] || 0) < 5);
+      if (notMastered) picked = notMastered;
+    }
+    if (!picked) return undefined;
+
+    const t = setTimeout(() => handleSelectCareerPath(picked), 900);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [careerChoiceModal, gameState.qolToggles?.autoCareerPath, gameState.qolToggles?.autoPathMode]);
+
   // --- 自動タイムリープ ---
   //
   // 本人の指摘（2026-11-26）:
@@ -8251,7 +8411,11 @@ ${activeChObj.rewardText}`}
             { spd: 1, unlocked: true, tip: '1倍速' },
             { spd: 2, unlocked: isSpeed2Unlocked, tip: 'タイムリープ結晶で「倍速思考(2x)」を購入して解放' },
             { spd: 4, unlocked: isSpeed4Unlocked, tip: '2x解放後、タイムリープ結晶で「超加速思考(4x)」を購入して解放' },
-            { spd: 8, unlocked: isSpeed8Unlocked, tip: '上位転生の聖杯で「極限時間加速(8x)」を購入して解放' }
+            { spd: 8, unlocked: isSpeed8Unlocked, tip: '上位転生の聖杯で「極限時間加速(8x)」を購入して解放' },
+            // テスト用。?dev=inuyuna を一度踏んだブラウザにだけ出る
+            ...(devUnlocked
+              ? [{ spd: TURBO_SPEED, unlocked: true, tip: 'テスト用の100倍速（1ティックで10ヶ月）' }]
+              : [])
           ].map(({ spd, unlocked, tip }) => (
             <button
               key={spd}
@@ -8285,9 +8449,9 @@ ${activeChObj.rewardText}`}
           <button
             onClick={() => setTutorialModalOpen(true)}
             className="px-1.5 py-0.5 text-[9.5px] font-mono bg-indigo-950 border border-indigo-600 text-indigo-200 hover:text-white cursor-pointer"
-            title="v0.36 ガイドを表示"
+            title="v0.4 ガイドを表示"
           >
-            v0.36
+            v0.4
           </button>
           <button
             onClick={() => {
@@ -10918,7 +11082,7 @@ ${activeChObj.rewardText}`}
               <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={gameState.qolToggles?.pauseOnRebirth !== false}
+                  checked={gameState.qolToggles?.pauseOnRebirth === true}
                   onChange={(e) =>
                     setGameState((prev) => ({
                       ...prev,

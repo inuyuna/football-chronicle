@@ -54,20 +54,31 @@ const REQ_RATING = [
   0, 6.5, 13, 21, 31, 45, 58, 82, 125, 195, 310, 500, 850, 1500, 2800, 6500, 18000, 55000, 180000
 ];
 
-// docs/GAME_DESIGN.md §4 の目標
+// docs/GAME_DESIGN.md §4 の目標（v0.4 で引き直した）
+//
+// 才能ゼロの人間が人生を繰り返したときに、どこまで行けるか。
+// 本人の言葉（2026-11-28）:
+//   「人生を何周かしたくらいでは、全く活躍できないし、技術も本当にひどい」
+//   「ほんの少しずつ強くなっていく」
 const TARGET = {
-  1: { catId: 6, label: '大学でも通用しない' },
-  2: { catId: 7, label: '兆しが見える' },
-  3: { catId: 9, label: 'プロ最底辺(J3)' },
-  4: { catId: 9, label: '3部の主力' },
-  5: { catId: 10, label: '2部(J2)' },
-  6: { catId: 10, label: '2部の主力' },
-  7: { catId: 11, label: '1部下位(J1)' },
-  8: { catId: 11, label: '1部の主力' },
-  9: { catId: 12, label: '海外底辺' },
-  10: { catId: 12, label: '海外で定着' },
-  11: { catId: 13, label: '欧州CC' },
-  12: { catId: 13, label: 'CC主力' }
+  1: { catId: 1, label: '何もできない' },
+  2: { catId: 2, label: '地元の中学で補欠' },
+  3: { catId: 3, label: 'Jクラブの下部に拾われる' },
+  4: { catId: 4, label: '県立高校でベンチ' },
+  5: { catId: 5, label: '強豪校に届く' },
+  6: { catId: 5, label: '強豪校で出番が増える' },
+  7: { catId: 6, label: '大学で試合に出る' },
+  8: { catId: 6, label: '大学の主力' },
+  9: { catId: 7, label: '社会人リーグ' },
+  10: { catId: 8, label: 'JFL' },
+  11: { catId: 9, label: 'プロ最底辺(J3)' },
+  12: { catId: 10, label: 'J2' },
+  13: { catId: 10, label: 'J2の主力' },
+  14: { catId: 11, label: 'J1' },
+  15: { catId: 12, label: '海外へ' },
+  16: { catId: 12, label: '海外で定着' },
+  17: { catId: 13, label: '欧州CC' },
+  18: { catId: 14, label: 'W杯・現実のピーク' }
 };
 
 // 継承結晶（毎周）で買う優先順
