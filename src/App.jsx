@@ -97,6 +97,14 @@ const CONTRACT_FLOOR_RATING = 4.5;
 // 取材が来るのはプロ契約（J3以上）を結んでから。
 const MEDIA_MIN_CAT = 9;
 
+// 自分の意思でこの人生を終えられるようになる周回数。
+// それまでは、契約が切れるか肉体が限界を迎えるまで終われない。
+//
+// 本人の設定（2026-11-30）: 死＝タイムリープ。
+// 何度も繰り返すうちに、終わり方まで自分で選べるようになった、という扱い。
+// 文面では直接書かない。「自分で区切りをつけた」ところまでにとどめる。
+const FREE_LEAP_MIN_GEN = 5;
+
 // 進行速度と一時停止は localStorage に残す。
 //
 // 本人の指摘（2026-11-28）:
@@ -626,6 +634,8 @@ const ENDINGS_DEF = [
 const CHALLENGES_DEF = [
   {
     id: 'ch_no_gear',
+    // 道具なし。買えない分、成長そのものも鈍る
+    penalties: { growth: 0.62, cap: 0.85, power: 0.8 },
     code: 'CH1',
     name: 'ハングリー精神の証明',
     ruleText: '制約：道具・自己投資の購入禁止（終了後に元の資産へ完全復元）',
@@ -635,6 +645,7 @@ const CHALLENGES_DEF = [
   },
   {
     id: 'ch_pure_body',
+    penalties: { growth: 0.55, cap: 0.78, power: 0.75 },
     code: 'CH2',
     name: '肉体純化・戦術封印の獣',
     ruleText: '制約：戦術練習＆戦術スタイル変更禁止（フィジカルと技術のみで突破）',
@@ -644,6 +655,7 @@ const CHALLENGES_DEF = [
   },
   {
     id: 'ch_lone_wolf',
+    penalties: { growth: 0.5, cap: 0.72, power: 0.7 },
     code: 'CH3',
     name: '孤高のフットボール求道者',
     ruleText: '制約：恋愛デート・同僚飯会・趣味強化禁止',
@@ -653,6 +665,8 @@ const CHALLENGES_DEF = [
   },
   {
     id: 'ch_half_cap',
+    // 上限半減は penalties.cap 側で扱う（計算を1か所にまとめるため）
+    penalties: { growth: 0.45, cap: 0.5, power: 0.65 },
     code: 'CH4',
     name: '凡人の限界突破',
     ruleText: '制約：全能力の上限値が半分（50%）に制限',
@@ -662,6 +676,7 @@ const CHALLENGES_DEF = [
   },
   {
     id: 'ch_twilight_32',
+    penalties: { growth: 0.4, cap: 0.6, power: 0.6 },
     code: 'CH5',
     name: '黄昏のラストダンス',
     ruleText: '制約：32歳・衰え期からキャリアをスタート',
@@ -671,6 +686,7 @@ const CHALLENGES_DEF = [
   },
   {
     id: 'ch_solo_carry',
+    penalties: { growth: 0.36, cap: 0.55, power: 0.52 },
     code: 'CH6',
     name: '孤高のワンマンチーム',
     ruleText: '制約：蒼空FC同僚・施設援護ボーナス無効',
@@ -680,6 +696,7 @@ const CHALLENGES_DEF = [
   },
   {
     id: 'ch_no_memory',
+    penalties: { growth: 0.3, cap: 0.48, power: 0.45 },
     code: 'CH7',
     name: '記憶封印の純粋挑戦',
     ruleText: '制約：習慣熟練引き継ぎ＆全ブレイクスルー無効（終了後復元）',
@@ -689,6 +706,8 @@ const CHALLENGES_DEF = [
   },
   {
     id: 'ch_ascetic_god',
+    // 最後の縛り。何を積んでも、ここでは1/3しか出ない
+    penalties: { growth: 0.24, cap: 0.33, power: 0.33 },
     code: 'CH8',
     name: '無一文の求道神',
     ruleText: '制約：道具・ブレイクスルー・蒼空FC・交流すべて禁止（終了後復元）',
@@ -878,6 +897,41 @@ const PARTNER_TYPES = {
     reqText: '20歳以上 & J1/欧州以上 & ファン30,000人',
     checkUnlock: (s) => s.age >= 20 && (s.categoryId || 0) >= 11 && (s.fans || 0) >= 30000,
     perk: '全能力上限 +25 / 試合賞金 +22%'
+  },
+  // ===== ここから下は上位転生を経てから出会う相手 =====
+  //
+  // 本人の要望（2026-11-30）:
+  //   「4人コンプ→2次転生後、さらに4人選択肢が増えるようにするか。
+  //     いろんな属性の女性をそろえる」
+  //
+  // 何十回も同じ年を繰り返した人間が、ようやく目を向けられるようになった相手たち。
+  doctor: {
+    id: 'doctor',
+    name: 'スポーツドクター',
+    reqText: '上位転生後・22歳以上',
+    checkUnlock: (s) => (s.ascensionCount || 0) >= 1 && s.age >= 22,
+    perk: '衰え -12% / 体力上限 +30'
+  },
+  chef: {
+    id: 'chef',
+    name: '専属シェフ',
+    reqText: '上位転生後・20歳以上',
+    checkUnlock: (s) => (s.ascensionCount || 0) >= 1 && s.age >= 20,
+    perk: '身体成長 +10% / 自然回復 +15%'
+  },
+  musician: {
+    id: 'musician',
+    name: '無名のミュージシャン',
+    reqText: '上位転生後・18歳以上',
+    checkUnlock: (s) => (s.ascensionCount || 0) >= 1 && s.age >= 18,
+    perk: '精神上限 +40 / 閃き +1.2%'
+  },
+  analyst: {
+    id: 'analyst',
+    name: 'データアナリスト',
+    reqText: '上位転生後・24歳以上 & 欧州以上',
+    checkUnlock: (s) => (s.ascensionCount || 0) >= 1 && s.age >= 24 && (s.categoryId || 0) >= 12,
+    perk: '戦術眼成長 +14% / 戦術Pt +25%'
   }
 };
 
@@ -2887,7 +2941,9 @@ const computeIndividualStatCaps = (
             ? 2.5
             : 1.0;
   const divineMult = 1 + (ascensionUpgrades.divine_cap_multiplier || 0) * 0.16;
-  const ch4Penalty = activeChallenge === 'ch_half_cap' ? 0.5 : 1.0;
+  // 縛りの数値ペナルティ。定義側（CHALLENGES_DEF[].penalties）に持たせてある
+  const activeChDef = activeChallenge ? CHALLENGES_DEF.find((c) => c.id === activeChallenge) : null;
+  const ch4Penalty = activeChDef?.penalties?.cap ?? 1.0;
 
   // 30歳以降は「才能の器」そのものが縮む。
   //
@@ -3075,9 +3131,14 @@ const getDrillEffectiveStats = (s, drill) => {
 
   // 要素を全部揃えたときの指数爆発を抑える（src/lib/softcap.js）。
   // 実挙動側（executeDrillInternal）と必ず同じ式にすること。
+  const chGrowthPenaltyUi =
+    (s.activeChallenge
+      ? CHALLENGES_DEF.find((c) => c.id === s.activeChallenge)?.penalties?.growth
+      : null) ?? 1.0;
   const globalMult =
     softcap(rawGlobalMult, GROWTH_SOFTCAP.threshold, GROWTH_SOFTCAP.strength) *
-    legacyHoardMult(s.legacyPoints);
+    legacyHoardMult(s.legacyPoints) *
+    chGrowthPenaltyUi;
 
   const ch2BodyTecMult = s.completedChallenges?.includes('ch_pure_body') ? 1.2 : 1.0;
 
@@ -3336,6 +3397,7 @@ export default function App() {
         careerEuroCcWins: 0,
         careerWorldWins: 0,
         careerProtegeExp: 0,
+        careerCleanSheets: 0,
         careerSchoolTours: 0,
         careerSonWins: 0,
         careerDaughterWins: 0
@@ -3802,6 +3864,7 @@ export default function App() {
           careerEuroCcWins: parsed.careerEuroCcWins || 0,
           careerWorldWins: parsed.careerWorldWins || 0,
           careerProtegeExp: parsed.careerProtegeExp || 0,
+          careerCleanSheets: parsed.careerCleanSheets || 0,
           careerSchoolTours: parsed.careerSchoolTours || 0,
           careerSonWins: parsed.careerSonWins || 0,
           careerDaughterWins: parsed.careerDaughterWins || 0
@@ -3925,6 +3988,8 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [careerChoiceModal, setCareerChoiceModal] = useState(null);
   const [truckEventModal, setTruckEventModal] = useState(null);
+  const [showSeasonTable, setShowSeasonTable] = useState(false);
+  const [confirmEndLife, setConfirmEndLife] = useState(false);
   const [confirmReincarnate, setConfirmReincarnate] = useState(false);
   const [confirmAscend, setConfirmAscend] = useState(false);
   const [creatorModal, setCreatorModal] = useState(() => ({
@@ -4440,9 +4505,14 @@ export default function App() {
 
       // 要素を全部揃えたときの指数爆発を抑える（src/lib/softcap.js）。
       // UI予測側（getDrillEffectiveStats）と必ず同じ式にすること。
+      const chGrowthPenalty =
+        (s.activeChallenge
+          ? CHALLENGES_DEF.find((c) => c.id === s.activeChallenge)?.penalties?.growth
+          : null) ?? 1.0;
       const mult =
         softcap(rawMult, GROWTH_SOFTCAP.threshold, GROWTH_SOFTCAP.strength) *
-        legacyHoardMult(s.legacyPoints);
+        legacyHoardMult(s.legacyPoints) *
+        chGrowthPenalty;
 
       const ch2BodyTecMult = s.completedChallenges?.includes('ch_pure_body') ? 1.2 : 1.0;
 
@@ -4744,10 +4814,15 @@ export default function App() {
         ((s.zoneFeverMonths || 0) > 0 ? 1.3 : 1.0);
 
       // 30個以上の倍率を素直に掛けると指数で爆発する（src/lib/softcap.js）
+      const chPowerPenalty =
+        (s.activeChallenge
+          ? CHALLENGES_DEF.find((c) => c.id === s.activeChallenge)?.penalties?.power
+          : null) ?? 1.0;
       const globalPowerMult =
         softcap(rawGlobalPowerMult, POWER_SOFTCAP.threshold, POWER_SOFTCAP.strength) *
         legacyHoardMult(s.legacyPoints) *
-        specializationMult(s.stats);
+        specializationMult(s.stats) *
+        chPowerPenalty;
 
       // 格上が相手のときのボーナス。
       // 相手の強さ（oppPower）はこの下で決めるので、ここではカテゴリの基準値で見る。
@@ -4952,6 +5027,12 @@ export default function App() {
       s.assists += myA;
       s.totalCareerGoals = (s.totalCareerGoals || 0) + myG;
       s.totalCareerAssists = (s.totalCareerAssists || 0) + myA;
+
+      // 無失点試合。守備の選手の年間成績として意味を持つ
+      if (oppGoals === 0) {
+        s.cleanSheets = (s.cleanSheets || 0) + 1;
+        s.careerCleanSheets = (s.careerCleanSheets || 0) + 1;
+      }
 
       const isMom = isWin && (myG + myA >= 2 || (['CB', 'GK'].includes(s.position) && oppGoals === 0));
       if (isMom) s.momCount += 1;
@@ -5349,6 +5430,41 @@ export default function App() {
         }
       }
 
+      // その年の成績を1行積む。
+      // 累計から前年の値を引いて差分を出す（毎月持ち回るより壊れにくい）。
+      if (birthdayTriggered) {
+        const prevMark = newState.seasonMark || {
+          matches: 0,
+          wins: 0,
+          goals: 0,
+          assists: 0,
+          cleanSheets: 0
+        };
+        const row = {
+          age: newState.age - 1,
+          cat: newState.categoryId,
+          club: newState.clubName,
+          league: CATEGORIES[newState.categoryId]?.name || '',
+          pos: newState.position,
+          matches: (newState.matchesPlayed || 0) - prevMark.matches,
+          wins: (newState.wins || 0) - prevMark.wins,
+          goals: (newState.goals || 0) - prevMark.goals,
+          assists: (newState.assists || 0) - prevMark.assists,
+          cleanSheets: (newState.cleanSheets || 0) - prevMark.cleanSheets,
+          rating: Number(getTotalRating(newState).toFixed(1))
+        };
+        if (row.matches > 0 || row.age >= 15) {
+          newState.seasonLog = [...(newState.seasonLog || []), row];
+        }
+        newState.seasonMark = {
+          matches: newState.matchesPlayed || 0,
+          wins: newState.wins || 0,
+          goals: newState.goals || 0,
+          assists: newState.assists || 0,
+          cleanSheets: newState.cleanSheets || 0
+        };
+      }
+
       // 誕生月ごとに年齢上限リミッター再計算
       if (birthdayTriggered) {
         newState.statCaps = computeIndividualStatCaps(
@@ -5382,6 +5498,23 @@ export default function App() {
           const chMsg = `⚔️【縛りチャレンジ制覇】${chDef.code}「${chDef.name}」の目標を達成！（${chDef.rewardText}）`;
           newState.storyFlavor = chMsg;
           addLogMsg(newState, chMsg, 'levelup');
+          // 達成した瞬間に手を止めて知らせる。
+          // ログとトーストだけだと、放置している間に流れて気づけない。
+          if (!newState.pendingEnding) {
+            newState.pendingEnding = {
+              id: `ch_${chDef.id}`,
+              code: `⚔️ ${chDef.code} 制覇`,
+              name: `「${chDef.name}」`,
+              sub: chDef.goalText || '',
+              reward: chDef.rewardText,
+              text:
+                `${chDef.ruleText || ''}\n\n` +
+                `縛ったまま、目標に届いた。\n` +
+                `ここから先は制限を抱えたまま続けてもいいし、\n` +
+                `区切りをつけて次の人生へ持っていってもいい。`,
+              offerLeap: true
+            };
+          }
           if (!suppressToast) {
             pushToast(`⚔️ ${chDef.code} 制覇！`, chDef.rewardText, 'amber');
           }
@@ -5752,6 +5885,27 @@ export default function App() {
         newState.careerSchoolTours = (newState.careerSchoolTours || 0) + 1;
       }
 
+      // ---- コーチ指導と懇親会 ----
+      //
+      // 本人の指摘（2026-11-30）:「コーチ指導アイテムが手動クリック必須で入手になってる」
+      // 弟子と同じく、秘書を買っていなくても自動で回る。
+      // どちらも余裕があるときだけ消費するので、他の買い物を邪魔しない。
+      if (socialOn && !isSocialBanned) {
+        if (newState.tactics >= 60 && newState.mental >= newState.maxMental * 0.8) {
+          newState.tactics = Number((newState.tactics - 25).toFixed(1));
+          newState.mental = Number((newState.mental - 8).toFixed(2));
+          applyStatGrowth(newState, 'iq', 0.25);
+          newState.relations.coachTrust = (newState.relations.coachTrust || 1) + 1;
+          newState.careerCoachLessons = (newState.careerCoachLessons || 0) + 1;
+        }
+        if (newState.money >= 16000 && newState.stamina >= newState.maxStamina * 0.8) {
+          newState.money -= 4000;
+          newState.stamina = Number((newState.stamina - 8).toFixed(2));
+          newState.relations.teamChem = (newState.relations.teamChem || 1) + 1;
+          newState.careerTeamDinners = (newState.careerTeamDinners || 0) + 1;
+        }
+      }
+
       // ---- 恋愛（月1回）----
       // 一度添い遂げた相手がいれば、敏腕秘書を買っていなくても自動で進む。
       // 以前は秘書 Lv2 のブロックの内側にあり、半自動の条件が効いていなかった。
@@ -5899,21 +6053,6 @@ export default function App() {
                 suppressToast ? null : pushToast
               );
             }
-          }
-        }
-        if (!isSocialBanned) {
-          if (newState.tactics >= 60 && newState.mental >= newState.maxMental * 0.8) {
-            newState.tactics = Number((newState.tactics - 25).toFixed(1));
-            newState.mental = Number((newState.mental - 8).toFixed(2));
-            applyStatGrowth(newState, 'iq', 0.25);
-            newState.relations.coachTrust = (newState.relations.coachTrust || 1) + 1;
-            newState.careerCoachLessons = (newState.careerCoachLessons || 0) + 1;
-          }
-          if (newState.money >= 16000 && newState.stamina >= newState.maxStamina * 0.8) {
-            newState.money -= 4000;
-            newState.stamina = Number((newState.stamina - 8).toFixed(2));
-            newState.relations.teamChem = (newState.relations.teamChem || 1) + 1;
-            newState.careerTeamDinners = (newState.careerTeamDinners || 0) + 1;
           }
         }
       }
@@ -6443,6 +6582,8 @@ export default function App() {
       // 衰え緩和を積めば低下そのものが遅くなるので、その人は長く現役でいられる。
       const careerPeak = Math.max(newState.peakRatingReached || 0, postDecayRating);
       const declineRatio = careerPeak > 0 ? postDecayRating / careerPeak : 1;
+      // 自分で区切りをつけた場合。年齢も成績も問わない
+      const selfEnded = Boolean(newState.endLifeRequested);
       const noContract =
         newState.age >= 24 &&
         ((newState.categoryId === 0 && postDecayRating < CONTRACT_FLOOR_RATING) ||
@@ -6458,13 +6599,15 @@ export default function App() {
       // 鉄人をMAXまで積めば 58+12=70歳。寿命強化に意味が出る形にする。
       const hardAgeLimit = newState.age >= Math.max(40, (newState.maxRetireAge || 28) + 12);
 
-      if ((noContract || hardAgeLimit) && !newState.isRetired) {
+      if ((noContract || hardAgeLimit || selfEnded) && !newState.isRetired) {
         newState.isRetired = true;
         newState.unlocks.reincarnateTab = true;
         checkGenomeAwakening(newState);
         const genNum = newState.totalGenerations || newState.generation;
         const finalCatName = CATEGORIES[newState.categoryId].name;
-        const retireReason = noContract
+        const retireReason = selfEnded
+          ? '自分で区切りをつけ'
+          : noContract
           ? `どのクラブからも契約の話が来なくなり（ピーク総合${formatNum(newState.peakRatingReached, 1)}→${formatNum(postDecayRating, 1)}）`
           : `肉体の限界（${newState.age}歳）を迎え`;
         addLogMsg(
@@ -6490,7 +6633,23 @@ export default function App() {
           type: 'truck',
           modal: {
             heading: `⏳ ${newState.age}歳・現役引退とタイムリープの刻（第${genNum}周目完結）`,
-            paragraphs: storyParas
+            paragraphs: storyParas,
+            // その生涯の成績。年ごとの表はモーダル側で折りたためるようにする
+            career: {
+              gen: genNum,
+              age: newState.age,
+              club: finalCatName,
+              pos: newState.position,
+              matches: newState.matchesPlayed || 0,
+              wins: newState.wins || 0,
+              goals: newState.goals || 0,
+              assists: newState.assists || 0,
+              cleanSheets: newState.cleanSheets || 0,
+              moms: newState.momCount || 0,
+              peak: Number((newState.peakRatingReached || 0).toFixed(1)),
+              fans: newState.fans || 0
+            },
+            seasons: [...(newState.seasonLog || [])]
           }
         };
       }
@@ -7850,6 +8009,7 @@ export default function App() {
             careerEuroCcWins: workingPrev.careerEuroCcWins || 0,
             careerWorldWins: workingPrev.careerWorldWins || 0,
             careerProtegeExp: workingPrev.careerProtegeExp || 0,
+            careerCleanSheets: workingPrev.careerCleanSheets || 0,
             careerSchoolTours: workingPrev.careerSchoolTours || 0,
             careerSonWins: workingPrev.careerSonWins || 0,
             careerDaughterWins: workingPrev.careerDaughterWins || 0
@@ -7980,6 +8140,7 @@ export default function App() {
             careerEuroCcWins: workingPrev.careerEuroCcWins || 0,
             careerWorldWins: workingPrev.careerWorldWins || 0,
             careerProtegeExp: workingPrev.careerProtegeExp || 0,
+            careerCleanSheets: workingPrev.careerCleanSheets || 0,
             careerSchoolTours: workingPrev.careerSchoolTours || 0,
             careerSonWins: workingPrev.careerSonWins || 0,
             careerDaughterWins: workingPrev.careerDaughterWins || 0
@@ -8033,6 +8194,24 @@ export default function App() {
     }
 
     setCreatorModal((prev) => ({ ...prev, open: false }));
+  };
+
+  // --- 自分でこの人生を終える（5周目から） ---
+  //
+  // 次のティックで引退処理に入るので、成績モーダルも演出もそのまま出る。
+  const canEndLifeNow =
+    (gameState.totalGenerations || gameState.generation || 1) >= FREE_LEAP_MIN_GEN &&
+    !gameState.isRetired &&
+    gameState.age >= 15;
+
+  const requestEndLife = () => {
+    setGameState((prev) => {
+      if (prev.isRetired) return prev;
+      const next = { ...prev, endLifeRequested: true };
+      addLogMsg(next, '🌌【区切り】ここまでだ、と自分で決めた。次がある。', 'story');
+      return next;
+    });
+    setConfirmEndLife(false);
   };
 
   // --- セーブ書き出し・復元・初期化 ---
@@ -8269,7 +8448,16 @@ export default function App() {
   // 衰えて降格してから引退するので、いまの所属で判定すると
   // 条件を満たしていた人生でも上位転生できずに第一転生へ流されていた。
   const reachedCatId = Math.max(gameState.categoryId || 0, gameState.peakCategoryId || 0);
-  const canAscendNow = legLvSum >= ascReqCrystalLv && reachedCatId >= ascReqCatId;
+  // 縛りをいくつ制覇したか。
+  // 本人の設計（2026-11-30）:
+  //   「4までクリアしたら2次転生、そこからちょっとずつ強くなって
+  //     8までクリアと2次転生を繰り返す」
+  const ascReqChallenges = Math.min(CHALLENGES_DEF.length, 4 + ascCount * 4);
+  const clearedChallenges = (gameState.completedChallenges || []).length;
+  const canAscendNow =
+    legLvSum >= ascReqCrystalLv &&
+    reachedCatId >= ascReqCatId &&
+    clearedChallenges >= ascReqChallenges;
 
   // 「一度やりきったものは、次の人生では手がかからない」の判定。
   // advanceOneMonth の中と同じ条件を見ている（表示と実挙動を合わせるため）。
@@ -8561,9 +8749,9 @@ ${activeChObj.rewardText}`}
           <button
             onClick={() => setTutorialModalOpen(true)}
             className="px-1.5 py-0.5 text-[9.5px] font-mono bg-indigo-950 border border-indigo-600 text-indigo-200 hover:text-white cursor-pointer"
-            title="v0.41 ガイドを表示"
+            title="v0.42 ガイドを表示"
           >
-            v0.41
+            v0.42
           </button>
           <button
             onClick={() => {
@@ -10420,6 +10608,41 @@ ${activeChObj.rewardText}`}
                   {/* サブタブ①：通常タイムリープ ＆ 継承結晶アップグレード */}
                   {leapSubTab === 'crystal' && (
                     <div className="space-y-1.5">
+                      {canEndLifeNow && (
+                        <div className="bg-slate-950 border border-slate-700 p-1.5 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold text-[9.5px] text-slate-300">
+                              この人生に区切りをつける
+                            </div>
+                            <div className="text-[8.5px] text-slate-500">
+                              契約が切れるのを待たずに、自分で終わらせる。今季までの成績がそのまま残る
+                            </div>
+                          </div>
+                          {!confirmEndLife ? (
+                            <button
+                              onClick={() => setConfirmEndLife(true)}
+                              className="px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-[9px] font-bold cursor-pointer shrink-0"
+                            >
+                              終える
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={requestEndLife}
+                                className="px-2 py-1 bg-rose-800 hover:bg-rose-700 border border-rose-500 text-white text-[9px] font-bold cursor-pointer"
+                              >
+                                ここまででいい
+                              </button>
+                              <button
+                                onClick={() => setConfirmEndLife(false)}
+                                className="px-2 py-1 bg-slate-900 border border-slate-700 text-slate-400 text-[9px] cursor-pointer"
+                              >
+                                まだ続ける
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="bg-purple-950/35 border border-purple-700 p-1.5 flex items-center justify-between gap-2">
                         <div>
                           <div className="font-bold text-purple-200">
@@ -10535,7 +10758,9 @@ ${activeChObj.rewardText}`}
                               （超越の聖杯: 🏆{formatNum(gameState.ascensionPoints || 0)}）
                             </div>
                             <div className="text-[8px] text-amber-300/80">
-                              条件: 結晶強化合計Lv.{ascReqCrystalLv}以上(現在{legLvSum}) ＆ {CATEGORIES[ascReqCatId].name}到達（転生予定: 🏆+
+                              条件: 結晶強化合計Lv.{ascReqCrystalLv}以上(現在{legLvSum}) ＆{' '}
+                              {CATEGORIES[ascReqCatId].name}到達 ＆ 縛り{ascReqChallenges}個制覇(現在
+                              {clearedChallenges})（転生予定: 🏆+
                               {formatNum(ascensionGainPreview)}）
                             </div>
                           </div>
@@ -10932,11 +11157,22 @@ ${activeChObj.rewardText}`}
             {gameState.pendingEnding.reward && (
               <div className="text-[10px] text-emerald-300">{gameState.pendingEnding.reward}</div>
             )}
+            {gameState.pendingEnding.offerLeap && canEndLifeNow && (
+              <button
+                onClick={() => {
+                  setGameState((prev) => ({ ...prev, pendingEnding: null }));
+                  requestEndLife();
+                }}
+                className="w-full py-2 bg-purple-700 hover:bg-purple-600 border border-purple-300 text-white font-bold text-xs cursor-pointer"
+              >
+                ここで区切りをつけてタイムリープする
+              </button>
+            )}
             <button
               onClick={() => setGameState((prev) => ({ ...prev, pendingEnding: null }))}
               className="w-full py-2 bg-amber-700 hover:bg-amber-600 border border-amber-300 text-white font-bold text-xs cursor-pointer"
             >
-              読み終えた
+              {gameState.pendingEnding.offerLeap ? 'このまま続ける' : '読み終えた'}
             </button>
           </div>
         </div>
@@ -11131,13 +11367,99 @@ ${activeChObj.rewardText}`}
       {/* ================= モーダル③：世代引退・タイムリープ演出 ================= */}
       {truckEventModal && (
         <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-2">
-          <div className="bg-slate-900 border border-purple-500 max-w-md w-full p-3.5 space-y-2.5 text-xs">
+          <div className="bg-slate-900 border border-purple-500 max-w-md w-full p-3.5 space-y-2.5 text-xs max-h-[90vh] overflow-y-auto">
             <div className="font-bold text-sm text-purple-300">{truckEventModal.heading}</div>
             <div className="space-y-1.5 text-[11px] text-slate-200 leading-relaxed">
               {truckEventModal.paragraphs.map((p, i) => (
                 <p key={i}>{p}</p>
               ))}
             </div>
+
+            {truckEventModal.career && (
+              <div className="bg-slate-950 border border-slate-800 p-2 space-y-1.5">
+                <div className="text-[10px] font-bold text-slate-300">
+                  第{truckEventModal.career.gen}周目の生涯成績
+                </div>
+                <div className="grid grid-cols-3 gap-1 font-mono text-[10px]">
+                  {[
+                    ['出場', `${formatNum(truckEventModal.career.matches)}`],
+                    ['勝利', `${formatNum(truckEventModal.career.wins)}`],
+                    ['ゴール', `${formatNum(truckEventModal.career.goals)}`],
+                    ['アシスト', `${formatNum(truckEventModal.career.assists)}`],
+                    ['無失点', `${formatNum(truckEventModal.career.cleanSheets)}`],
+                    ['MOM', `${formatNum(truckEventModal.career.moms)}`],
+                    ['最終所属', truckEventModal.career.club],
+                    ['ポジション', truckEventModal.career.pos],
+                    ['ピーク総合', formatNum(truckEventModal.career.peak, 1)]
+                  ].map(([k, v]) => (
+                    <div key={k} className="bg-slate-900/70 border border-slate-800 px-1.5 py-1">
+                      <div className="text-[8px] text-slate-500">{k}</div>
+                      <div className="text-slate-100 truncate">{v}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {(truckEventModal.seasons || []).length > 0 && (
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setShowSeasonTable((v) => !v)}
+                      className="text-[9.5px] text-sky-300 hover:text-sky-200 cursor-pointer"
+                    >
+                      {showSeasonTable ? '▼' : '▶'} 年ごとの成績（
+                      {truckEventModal.seasons.length}シーズン）
+                    </button>
+                    {showSeasonTable && (
+                      <div className="max-h-44 overflow-y-auto border border-slate-800">
+                        <table className="w-full font-mono text-[9px]">
+                          <thead className="sticky top-0 bg-slate-900 text-slate-400">
+                            <tr>
+                              <th className="px-1 py-0.5 text-left">歳</th>
+                              <th className="px-1 py-0.5 text-left">所属</th>
+                              <th className="px-1 py-0.5 text-right">出場</th>
+                              <th className="px-1 py-0.5 text-right">勝</th>
+                              <th className="px-1 py-0.5 text-right">G</th>
+                              <th className="px-1 py-0.5 text-right">A</th>
+                              <th className="px-1 py-0.5 text-right">無</th>
+                              <th className="px-1 py-0.5 text-right">総合</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {truckEventModal.seasons
+                              .slice()
+                              .reverse()
+                              .map((s, i) => (
+                                <tr
+                                  key={`${s.age}-${i}`}
+                                  className="border-t border-slate-800/70 text-slate-300"
+                                >
+                                  <td className="px-1 py-0.5">{s.age}</td>
+                                  <td className="px-1 py-0.5 truncate max-w-[110px]" title={s.league}>
+                                    {s.club}
+                                  </td>
+                                  <td className="px-1 py-0.5 text-right">{formatNum(s.matches)}</td>
+                                  <td className="px-1 py-0.5 text-right text-amber-200">
+                                    {formatNum(s.wins)}
+                                  </td>
+                                  <td className="px-1 py-0.5 text-right text-rose-200">
+                                    {formatNum(s.goals)}
+                                  </td>
+                                  <td className="px-1 py-0.5 text-right text-indigo-200">
+                                    {formatNum(s.assists)}
+                                  </td>
+                                  <td className="px-1 py-0.5 text-right text-emerald-200">
+                                    {formatNum(s.cleanSheets)}
+                                  </td>
+                                  <td className="px-1 py-0.5 text-right">{formatNum(s.rating, 1)}</td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="bg-purple-950/50 border border-purple-700 p-2 text-[10px] text-purple-200 font-mono">
               獲得継承結晶: 💎 +{formatNum(legacyGain)}（次の周回で倍速解放や才能上限を強化しよう！）
             </div>
