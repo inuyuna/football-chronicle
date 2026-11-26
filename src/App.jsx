@@ -175,8 +175,21 @@ const ENDLESS_INVEST_DEF = [
 ];
 const ENDLESS_INVEST_GROWTH = 1.38;
 
-// 全国スクール巡業 1回ぶんのコスト
-const SCHOOL_TOUR_COST = { fans: 400, money: 15000 };
+// 全国スクール巡業 1回ぶんのコスト。
+//
+// 固定（ファン400 / 15,000円）だと序盤は一度も開けず、
+// 終盤は安すぎて連打するだけになっていた。所属カテゴリに連動させる。
+//   キッズ    : 121ファン / 4,400円
+//   JクラブJY :  127ファン / 6,100円
+//   J3        :  760ファン / 46,500円
+//   J1        : 5,320ファン / 184,000円
+const schoolTourCost = (categoryId) => {
+  const cat = CATEGORIES[categoryId] || CATEGORIES[0];
+  return {
+    fans: Math.floor(120 + cat.fanGain * 0.8),
+    money: Math.floor(4000 + cat.baseReward * 0.5)
+  };
+};
 // シグネチャーブランド（ファンで買い、資金も要る）
 const SIG_BRAND = { maxLv: 30, baseFans: 1500, baseMoney: 35000, growth: 1.65 };
 const ALL_DRILL_IDS = ['tech_drill', 'phy_drill', 'tactics_video', 'shoot_drill', 'mental_image'];
@@ -3323,6 +3336,7 @@ export default function App() {
         careerEuroCcWins: 0,
         careerWorldWins: 0,
         careerProtegeExp: 0,
+        careerSchoolTours: 0,
         careerSonWins: 0,
         careerDaughterWins: 0
       },
@@ -3788,6 +3802,7 @@ export default function App() {
           careerEuroCcWins: parsed.careerEuroCcWins || 0,
           careerWorldWins: parsed.careerWorldWins || 0,
           careerProtegeExp: parsed.careerProtegeExp || 0,
+          careerSchoolTours: parsed.careerSchoolTours || 0,
           careerSonWins: parsed.careerSonWins || 0,
           careerDaughterWins: parsed.careerDaughterWins || 0
         },
@@ -4876,6 +4891,12 @@ export default function App() {
 
       s.matchesPlayed += 1;
       s.careerTotalMatches = (s.careerTotalMatches || 0) + 1;
+
+      // 試合に出ること自体が戦術眼の経験になる。
+      // 戦術Ptの供給が練習とスクール巡業に偏っていて、
+      // 巡業を回さないと道具も施設も買えない状態になっていたため。
+      const matchTacticsGain = (1.8 + s.categoryId * 1.4) * (isWin ? 1.6 : isDraw ? 1.2 : 1.0);
+      s.tactics = Number((s.tactics + matchTacticsGain).toFixed(1));
       s.careerPosMatches[s.position] = (s.careerPosMatches[s.position] || 0) + 1;
 
       if (['CB', 'GK', 'SB'].includes(s.position)) {
@@ -5565,12 +5586,13 @@ export default function App() {
           }
 
           // スクール巡業（ファンを熟練度に換える）
+          const bizTourCost = schoolTourCost(newState.categoryId);
           if (
-            (newState.fans || 0) >= SCHOOL_TOUR_COST.fans * 2 &&
-            newState.money >= SCHOOL_TOUR_COST.money * 2
+            (newState.fans || 0) >= bizTourCost.fans * 2 &&
+            newState.money >= bizTourCost.money * 2
           ) {
-            newState.fans -= SCHOOL_TOUR_COST.fans;
-            newState.money -= SCHOOL_TOUR_COST.money;
+            newState.fans -= bizTourCost.fans;
+            newState.money -= bizTourCost.money;
             newState.tactics = Number((newState.tactics + 45).toFixed(1));
             for (const id of ALL_DRILL_IDS) {
               newState.mastery[id] = (newState.mastery[id] || 0) + 15;
@@ -5579,6 +5601,7 @@ export default function App() {
               ...(newState.brandProjects || {}),
               school_tour: (newState.brandProjects?.school_tour || 0) + 1
             };
+            newState.careerSchoolTours = (newState.careerSchoolTours || 0) + 1;
             bizBought = true;
             bizGuard += 1;
           }
@@ -5640,10 +5663,199 @@ export default function App() {
         }
       }
 
-      // QoL自動化②：敏腕秘書（交流・師弟・お守り＆特性自動装備）
+      // QoL自動化②：交流・師弟・お守り＆特性自動装備
+      //
+      // 敏腕秘書（結晶で買う）に加えて、「過去に一度やりきったもの」も自動になる。
+      //
+      // 本人の要望（2026-11-29）:
+      //   「弟子の育成と結婚を半自動化（育ってきたら自動化されるように）して」
+      //
+      // タイムリープの文脈とも合う。同じ相手と同じ出会い方をするのが何度目にもなれば、
+      // どう接すればどうなるかは体が覚えている。
       const secLv = newState.legacyUpgrades?.auto_social_secretary || 0;
       const isSocialBanned = newState.activeChallenge === 'ch_lone_wolf' || newState.activeChallenge === 'ch_ascetic_god';
-      if (secLv >= 1 && newState.qolToggles?.autoSocialRun !== false) {
+      const socialOn = newState.qolToggles?.autoSocialRun !== false;
+
+      // 過去に絆Lv5まで育てた弟子がいる
+      const hasMasteredProtege = Object.values(newState.protegeBonds || {}).some((lv) => (lv || 0) >= 5);
+      // 過去に結婚までいった相手がいる
+      const hasMarriedBefore = Object.values(newState.partnerRecords || {}).some((r) => r && r.married);
+      const autoProtegeOn = socialOn && !isSocialBanned && (secLv >= 1 || hasMasteredProtege);
+      const autoRomanceOn = socialOn && !isSocialBanned && (secLv >= 2 || hasMarriedBefore);
+      // スクール巡業は最初から自動。
+      // 弟子や恋人と違って人間関係ではなく、余ったファンを熟練度と戦術Ptに
+      // 換えるだけの作業なので、条件を課す意味がない。
+      // 消費はコストの2倍以上あるときだけなので、ブランド用のファンは残る。
+      const autoTourOn = socialOn;
+
+      // ---- 弟子：まだ誰も取っていなければ自動で指名する ----
+      // 図鑑がまだ埋まっていない相手を優先する（埋める方向に進むように）
+      if (autoProtegeOn && !newState.protege?.archetypeId && newState.age >= 15) {
+        const ids = Object.keys(PROTEGE_ARCHETYPES);
+        const next =
+          ids.find((id) => (newState.protegeBonds?.[id] || 0) < 5) || ids[0];
+        if (next) {
+          newState.protege = { archetypeId: next, bondLv: 1 };
+          newState.protegeBonds = {
+            ...(newState.protegeBonds || {}),
+            [next]: Math.max(1, newState.protegeBonds?.[next] || 0)
+          };
+          const arch = PROTEGE_ARCHETYPES[next];
+          addLogMsg(
+            newState,
+            `\🎓【師弟結成】「${arch.name}[${arch.pos}]」を愛弟子に指名（手が覚えている）`,
+            'story'
+          );
+        }
+      }
+
+      // ---- 弟子の特訓（月1回）----
+      if (autoProtegeOn) {
+        const pMonth = newState.age * 12 + newState.month;
+        if (
+          newState.protege?.archetypeId &&
+          newState.lastProtegeMonth !== pMonth &&
+          newState.tactics >= 50 &&
+          newState.stamina >= newState.maxStamina * 0.8
+        ) {
+          const pId = newState.protege.archetypeId;
+          newState.lastProtegeMonth = pMonth;
+          newState.tactics = Number((newState.tactics - 20).toFixed(1));
+          newState.stamina = Number((newState.stamina - 10).toFixed(2));
+          const nextBond = (newState.protege.bondLv || 1) + 1;
+          newState.protege = { ...newState.protege, bondLv: nextBond };
+          newState.protegeBonds = {
+            ...(newState.protegeBonds || {}),
+            [pId]: Math.max(nextBond, newState.protegeBonds?.[pId] || 0)
+          };
+          newState.careerProtegeExp = (newState.careerProtegeExp || 0) + 2;
+        }
+      }
+
+      // ---- スクール巡業（ファンを熟練度と戦術Ptに換える）----
+      const autoTourCost = schoolTourCost(newState.categoryId);
+      if (
+        autoTourOn &&
+        (newState.fans || 0) >= autoTourCost.fans * 2 &&
+        newState.money >= autoTourCost.money * 2
+      ) {
+        newState.fans -= autoTourCost.fans;
+        newState.money -= autoTourCost.money;
+        newState.tactics = Number((newState.tactics + 45).toFixed(1));
+        for (const id of ALL_DRILL_IDS) {
+          newState.mastery[id] = (newState.mastery[id] || 0) + 15;
+        }
+        newState.brandProjects = {
+          ...(newState.brandProjects || {}),
+          school_tour: (newState.brandProjects?.school_tour || 0) + 1
+        };
+        newState.careerSchoolTours = (newState.careerSchoolTours || 0) + 1;
+      }
+
+      // ---- 恋愛（月1回）----
+      // 一度添い遂げた相手がいれば、敏腕秘書を買っていなくても自動で進む。
+      // 以前は秘書 Lv2 のブロックの内側にあり、半自動の条件が効いていなかった。
+      if (autoRomanceOn) {
+        // 自動消化も手動と同じルール（月1回・+6・上限100・結婚は100）で進める。
+        // ここだけ旧ルール（+10・40で結婚）だと、秘書を買った人が
+        // 一瞬で結婚してしまい、段階イベントを一つも見ないまま終わる。
+        const romanceMonth = newState.age * 12 + newState.month;
+        if (
+          !isSocialBanned &&
+          !newState.life.married &&
+          newState.lastRomanceMonth !== romanceMonth &&
+          newState.age >= 15 &&
+          newState.money >= 5000 &&
+          (newState.life.affection || 0) < AFFECTION_MAX
+        ) {
+          // 相手を決めてあれば、条件を満たした時点でその人に切り替える。
+          // 本人の要望（2026-11-26）:「結婚相手もだが、あらかじめ決めておけば」
+          const wantPartner = newState.qolToggles?.preferredPartner;
+          const canWant =
+            wantPartner &&
+            PARTNER_TYPES[wantPartner] &&
+            PARTNER_TYPES[wantPartner].checkUnlock(newState, getTotalRating(newState));
+          const pType = canWant ? wantPartner : newState.life.partnerType || 'childhood';
+          const pObj = PARTNER_TYPES[pType];
+          // 相手が変わったら好感度はゼロから
+          const baseAff = newState.life.partnerType === pType ? newState.life.affection || 0 : 0;
+          const newAff = Math.min(AFFECTION_MAX, baseAff + AFFECTION_PER_DATE);
+          const milestone = reachedMilestone(baseAff, newAff);
+          const married = newAff >= AFFECTION_MARRY && newState.age >= 18;
+          const hasChild = newState.life.hasChild;
+
+          newState.lastRomanceMonth = romanceMonth;
+          newState.money -= 5000;
+          newState.careerTotalAffection = (newState.careerTotalAffection || 0) + AFFECTION_PER_DATE;
+          newState.careerFamilyEvents = (newState.careerFamilyEvents || 0) + (married ? 1 : 0);
+          const prevRec = newState.partnerRecords?.[pType] || { maxAff: 0, married: false };
+          newState.partnerRecords = {
+            ...(newState.partnerRecords || {}),
+            [pType]: {
+              maxAff: Math.max(prevRec.maxAff, newAff),
+              married: prevRec.married || married
+            }
+          };
+          newState.life = {
+            ...newState.life,
+            status: married
+              ? `${pObj.name}と結婚（浮気なし・一途）`
+              : `${pObj.name}と交際中 (親密度${newAff}/${AFFECTION_MAX})`,
+            partnerType: pType,
+            affection: newAff,
+            married,
+            hasChild
+          };
+          if (milestone) {
+            const writer = ROMANCE_FLAVOR[pType]?.[milestone.key];
+            if (writer) {
+              const text = `【${milestone.label}】\n` + writer(newState, pObj.name);
+              newState.storyFlavor = text;
+              addLogMsg(newState, text, 'story');
+            }
+            if (milestone.effect === 'charm' && !newState.unlockedCharms.includes('charm_lover')) {
+              newState.unlockedCharms = [...newState.unlockedCharms, 'charm_lover'];
+            }
+            if (milestone.effect === 'mental') {
+              newState.maxMental = Number((newState.maxMental + 10).toFixed(2));
+            }
+            if (milestone.effect === 'growth') {
+              newState.maxStamina = Number((newState.maxStamina + 10).toFixed(2));
+              newState.tactics = Number((newState.tactics + 60).toFixed(1));
+            }
+            if (milestone.effect === 'stamina') {
+              newState.maxStamina = Number((newState.maxStamina + 15).toFixed(2));
+            }
+          }
+        }
+        if (newState.life.married && !newState.life.hasChild && newState.age >= 20 && nextRandom(newState) < 0.18) {
+          newState.life = {
+            ...newState.life,
+            hasChild: true,
+            childBornAge: newState.age,
+            status: '愛する妻と第一子誕生（成長待ち）'
+          };
+          newState.careerFamilyEvents = (newState.careerFamilyEvents || 0) + 1;
+          const babyMsg = '👶【第一子誕生】愛するパートナーとの間に元気な赤ちゃんが誕生！成長すれば自動でサッカーの道へ進むかも！？';
+          newState.storyFlavor = babyMsg;
+          addLogMsg(newState, babyMsg, 'levelup');
+          if (!suppressToast) {
+            pushToast('👶 第一子誕生！', 'この子が16歳になったら、自分からサッカーの道を選ぶ', 'pink');
+          }
+        }
+        if (
+          newState.age >= 16 &&
+          newState.categoryId >= MEDIA_MIN_CAT &&
+          newState.mental >= newState.maxMental * 0.75
+        ) {
+          newState.mental = Number((newState.mental - 12).toFixed(2));
+          newState.fans += Math.round(15 + CATEGORIES[newState.categoryId].fanGain * 1.5);
+          newState.money += Math.round(4500 + CATEGORIES[newState.categoryId].baseReward * 0.75);
+          newState.careerMediaCount = (newState.careerMediaCount || 0) + 1;
+        }
+      }
+
+      if (secLv >= 1 && socialOn) {
         const maxC = computeMaxCharmSlots(newState.legacyUpgrades, newState.ascensionUpgrades, newState.genomes);
         if ((newState.equippedCharms?.length || 0) < maxC) {
           const unequipped = (newState.unlockedCharms || []).find((id) => !(newState.equippedCharms || []).includes(id));
@@ -5697,129 +5909,11 @@ export default function App() {
             newState.relations.coachTrust = (newState.relations.coachTrust || 1) + 1;
             newState.careerCoachLessons = (newState.careerCoachLessons || 0) + 1;
           }
-          const protegeMonth = newState.age * 12 + newState.month;
-          if (
-            newState.protege?.archetypeId &&
-            newState.lastProtegeMonth !== protegeMonth &&
-            newState.tactics >= 50 &&
-            newState.stamina >= newState.maxStamina * 0.8
-          ) {
-            const pId = newState.protege.archetypeId;
-            newState.lastProtegeMonth = protegeMonth;
-            newState.tactics = Number((newState.tactics - 20).toFixed(1));
-            newState.stamina = Number((newState.stamina - 10).toFixed(2));
-            const nextBond = (newState.protege.bondLv || 1) + 1;
-            newState.protege = { ...newState.protege, bondLv: nextBond };
-            newState.protegeBonds = {
-              ...(newState.protegeBonds || {}),
-              [pId]: Math.max(nextBond, newState.protegeBonds?.[pId] || 0)
-            };
-            newState.careerProtegeExp = (newState.careerProtegeExp || 0) + 2;
-          }
           if (newState.money >= 16000 && newState.stamina >= newState.maxStamina * 0.8) {
             newState.money -= 4000;
             newState.stamina = Number((newState.stamina - 8).toFixed(2));
             newState.relations.teamChem = (newState.relations.teamChem || 1) + 1;
             newState.careerTeamDinners = (newState.careerTeamDinners || 0) + 1;
-          }
-        }
-        if (secLv >= 2) {
-          // 自動消化も手動と同じルール（月1回・+6・上限100・結婚は100）で進める。
-          // ここだけ旧ルール（+10・40で結婚）だと、秘書を買った人が
-          // 一瞬で結婚してしまい、段階イベントを一つも見ないまま終わる。
-          const romanceMonth = newState.age * 12 + newState.month;
-          if (
-            !isSocialBanned &&
-            !newState.life.married &&
-            newState.lastRomanceMonth !== romanceMonth &&
-            newState.age >= 15 &&
-            newState.money >= 5000 &&
-            (newState.life.affection || 0) < AFFECTION_MAX
-          ) {
-            // 相手を決めてあれば、条件を満たした時点でその人に切り替える。
-            // 本人の要望（2026-11-26）:「結婚相手もだが、あらかじめ決めておけば」
-            const wantPartner = newState.qolToggles?.preferredPartner;
-            const canWant =
-              wantPartner &&
-              PARTNER_TYPES[wantPartner] &&
-              PARTNER_TYPES[wantPartner].checkUnlock(newState, getTotalRating(newState));
-            const pType = canWant ? wantPartner : newState.life.partnerType || 'childhood';
-            const pObj = PARTNER_TYPES[pType];
-            // 相手が変わったら好感度はゼロから
-            const baseAff = newState.life.partnerType === pType ? newState.life.affection || 0 : 0;
-            const newAff = Math.min(AFFECTION_MAX, baseAff + AFFECTION_PER_DATE);
-            const milestone = reachedMilestone(baseAff, newAff);
-            const married = newAff >= AFFECTION_MARRY && newState.age >= 18;
-            const hasChild = newState.life.hasChild;
-
-            newState.lastRomanceMonth = romanceMonth;
-            newState.money -= 5000;
-            newState.careerTotalAffection = (newState.careerTotalAffection || 0) + AFFECTION_PER_DATE;
-            newState.careerFamilyEvents = (newState.careerFamilyEvents || 0) + (married ? 1 : 0);
-            const prevRec = newState.partnerRecords?.[pType] || { maxAff: 0, married: false };
-            newState.partnerRecords = {
-              ...(newState.partnerRecords || {}),
-              [pType]: {
-                maxAff: Math.max(prevRec.maxAff, newAff),
-                married: prevRec.married || married
-              }
-            };
-            newState.life = {
-              ...newState.life,
-              status: married
-                ? `${pObj.name}と結婚（浮気なし・一途）`
-                : `${pObj.name}と交際中 (親密度${newAff}/${AFFECTION_MAX})`,
-              partnerType: pType,
-              affection: newAff,
-              married,
-              hasChild
-            };
-            if (milestone) {
-              const writer = ROMANCE_FLAVOR[pType]?.[milestone.key];
-              if (writer) {
-                const text = `【${milestone.label}】\n` + writer(newState, pObj.name);
-                newState.storyFlavor = text;
-                addLogMsg(newState, text, 'story');
-              }
-              if (milestone.effect === 'charm' && !newState.unlockedCharms.includes('charm_lover')) {
-                newState.unlockedCharms = [...newState.unlockedCharms, 'charm_lover'];
-              }
-              if (milestone.effect === 'mental') {
-                newState.maxMental = Number((newState.maxMental + 10).toFixed(2));
-              }
-              if (milestone.effect === 'growth') {
-                newState.maxStamina = Number((newState.maxStamina + 10).toFixed(2));
-                newState.tactics = Number((newState.tactics + 60).toFixed(1));
-              }
-              if (milestone.effect === 'stamina') {
-                newState.maxStamina = Number((newState.maxStamina + 15).toFixed(2));
-              }
-            }
-          }
-          if (newState.life.married && !newState.life.hasChild && newState.age >= 20 && nextRandom(newState) < 0.18) {
-            newState.life = {
-              ...newState.life,
-              hasChild: true,
-              childBornAge: newState.age,
-              status: '愛する妻と第一子誕生（成長待ち）'
-            };
-            newState.careerFamilyEvents = (newState.careerFamilyEvents || 0) + 1;
-            const babyMsg = '👶【第一子誕生】愛するパートナーとの間に元気な赤ちゃんが誕生！成長すれば自動でサッカーの道へ進むかも！？';
-            newState.storyFlavor = babyMsg;
-            addLogMsg(newState, babyMsg, 'levelup');
-            if (!suppressToast) {
-              pushToast('👶 第一子誕生！', 'この子が16歳になったら、自分からサッカーの道を選ぶ', 'pink');
-            }
-          }
-          if (
-            newState.age >= 16 &&
-            newState.categoryId >= MEDIA_MIN_CAT &&
-            newState.mental >= newState.maxMental * 0.75
-          ) {
-            newState.mental = Number((newState.mental - 12).toFixed(2));
-            newState.fans += Math.round(15 + CATEGORIES[newState.categoryId].fanGain * 1.5);
-            newState.money += Math.round(4500 + CATEGORIES[newState.categoryId].baseReward * 0.75);
-            newState.careerMediaCount = (newState.careerMediaCount || 0) + 1;
           }
         }
       }
@@ -6651,8 +6745,9 @@ export default function App() {
   // --- ファン還元アクション（スクール巡業も1x / 10x / MAX一括対応！） ---
   const executeFanSchoolTour = () => {
     setGameState((prev) => {
-      const costFans = SCHOOL_TOUR_COST.fans;
-      const costG = SCHOOL_TOUR_COST.money;
+      const tourCost = schoolTourCost(prev.categoryId);
+      const costFans = tourCost.fans;
+      const costG = tourCost.money;
       const maxAffordable = Math.min(Math.floor((prev.fans || 0) / costFans), Math.floor(prev.money / costG));
       const count = buyAmount === 'max' ? maxAffordable : Math.min(buyAmount, maxAffordable);
       if (count <= 0) return prev;
@@ -6668,6 +6763,7 @@ export default function App() {
         tactics: Number((prev.tactics + 45 * count).toFixed(1)),
         mastery: nextMastery,
         storyFlavor: `🎪【全国スクール巡業 ×${count}回】子供たちに技術を教えることで、自身の基礎と習慣熟練度も研ぎ澄まされた！`,
+        careerSchoolTours: (prev.careerSchoolTours || 0) + count,
         brandProjects: {
           ...prev.brandProjects,
           school_tour: (prev.brandProjects?.school_tour || 0) + count
@@ -7754,6 +7850,7 @@ export default function App() {
             careerEuroCcWins: workingPrev.careerEuroCcWins || 0,
             careerWorldWins: workingPrev.careerWorldWins || 0,
             careerProtegeExp: workingPrev.careerProtegeExp || 0,
+            careerSchoolTours: workingPrev.careerSchoolTours || 0,
             careerSonWins: workingPrev.careerSonWins || 0,
             careerDaughterWins: workingPrev.careerDaughterWins || 0
           },
@@ -7883,6 +7980,7 @@ export default function App() {
             careerEuroCcWins: workingPrev.careerEuroCcWins || 0,
             careerWorldWins: workingPrev.careerWorldWins || 0,
             careerProtegeExp: workingPrev.careerProtegeExp || 0,
+            careerSchoolTours: workingPrev.careerSchoolTours || 0,
             careerSonWins: workingPrev.careerSonWins || 0,
             careerDaughterWins: workingPrev.careerDaughterWins || 0
           },
@@ -8173,6 +8271,20 @@ export default function App() {
   const reachedCatId = Math.max(gameState.categoryId || 0, gameState.peakCategoryId || 0);
   const canAscendNow = legLvSum >= ascReqCrystalLv && reachedCatId >= ascReqCatId;
 
+  // 「一度やりきったものは、次の人生では手がかからない」の判定。
+  // advanceOneMonth の中と同じ条件を見ている（表示と実挙動を合わせるため）。
+  const autoSecLv = gameState.legacyUpgrades?.auto_social_secretary || 0;
+  const autoSocialEnabled = gameState.qolToggles?.autoSocialRun !== false;
+  const protegeIsAuto =
+    autoSocialEnabled &&
+    (autoSecLv >= 1 ||
+      Object.values(gameState.protegeBonds || {}).some((lv) => (lv || 0) >= 5));
+  const romanceIsAuto =
+    autoSocialEnabled &&
+    (autoSecLv >= 2 ||
+      Object.values(gameState.partnerRecords || {}).some((r) => r && r.married));
+  const tourIsAuto = autoSocialEnabled;
+
   // --- 開いたままの進路モーダルを自動で選ぶ ---
   //
   // 進路の自動選択は advanceOneMonth の中（進路が発生した瞬間）で判定している。
@@ -8449,9 +8561,9 @@ ${activeChObj.rewardText}`}
           <button
             onClick={() => setTutorialModalOpen(true)}
             className="px-1.5 py-0.5 text-[9.5px] font-mono bg-indigo-950 border border-indigo-600 text-indigo-200 hover:text-white cursor-pointer"
-            title="v0.4 ガイドを表示"
+            title="v0.41 ガイドを表示"
           >
-            v0.4
+            v0.41
           </button>
           <button
             onClick={() => {
@@ -9115,6 +9227,11 @@ ${activeChObj.rewardText}`}
                       <div className="flex flex-wrap items-center justify-between gap-1">
                         <span className="text-[9px] font-bold text-sky-300 flex items-center gap-1">
                           <GraduationCap size={11} /> 次世代「師弟継承」（この人生で育てられるのは1人だけ・全4人絆Lv.5図鑑コンプで全上限+18）
+                          {protegeIsAuto && (
+                            <span className="px-1 border border-emerald-600 text-emerald-300 text-[7.5px] font-mono">
+                              自動
+                            </span>
+                          )}
                         </span>
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono text-[8.5px] text-amber-300">
@@ -9244,9 +9361,11 @@ ${activeChObj.rewardText}`}
                             <span className="font-mono text-[8px]">5,000円 精-8</span>
                           </div>
                           <div className="text-[8.5px] text-slate-400 mt-0.5">
-                            {gameState.lastRomanceMonth === gameState.age * 12 + gameState.month
-                              ? '今月はもう会った（月に1回まで）'
-                              : `月1回まで。20/40/60/80/${AFFECTION_MAX} で出来事が起きる。${AFFECTION_MARRY}＆18歳以上で結婚`}
+                            {romanceIsAuto
+                              ? '一度添い遂げた相手がいる。この先は放っておいても進む（手動でも押せる）'
+                              : gameState.lastRomanceMonth === gameState.age * 12 + gameState.month
+                                ? '今月はもう会った（月に1回まで）'
+                                : `月1回まで。20/40/60/80/${AFFECTION_MAX} で出来事が起きる。${AFFECTION_MARRY}＆18歳以上で結婚`}
                           </div>
                         </button>
                       )}
@@ -9855,7 +9974,13 @@ ${activeChObj.rewardText}`}
                                   disabled={cnt <= 0}
                                   className="px-1.5 py-0.5 bg-emerald-900/70 hover:bg-emerald-800 disabled:opacity-45 border border-emerald-500 text-emerald-200 text-[8px] font-mono cursor-pointer"
                                 >
-                                  🎪 スクール巡業 {cnt > 1 ? `×${cnt}回` : '(400ファン/1.5万円)'}
+                                  🎪 スクール巡業{' '}
+                                  {cnt > 1
+                                    ? `×${cnt}回`
+                                    : `(${formatNum(schoolTourCost(gameState.categoryId).fans)}ファン/${formatYen(
+                                        schoolTourCost(gameState.categoryId).money
+                                      )})`}
+                                  {tourIsAuto && <span className="ml-1 text-emerald-400">自動</span>}
                                 </button>
                               );
                             })()}
