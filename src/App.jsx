@@ -105,6 +105,57 @@ const MEDIA_MIN_CAT = 9;
 // 文面では直接書かない。「自分で区切りをつけた」ところまでにとどめる。
 const FREE_LEAP_MIN_GEN = 5;
 
+// 前の人生の記憶で稼ぐ手段。
+//
+// どれも「知っていること」を金に換えるだけなので、戦術Pt はほとんど要らない。
+// 以前は未来予知記憶が basePt 120 / growth 1.82 で、Lv10 で1回 45,000Pt を
+// 要求していた。資金がいくらあっても買えない状態になっていた（本人報告）。
+// 自分の手で買った最高Lvを覚えておく。
+//
+// 自動購入はここまでしか追いつかない（その先は自分で買う）。
+// 周回をまたいで残るので、2周目以降は前の人生で到達した段階まで自動で戻り、
+// 「そこから先を自分で伸ばす」形になる。
+const markManualBuy = (prevMarks, id, lv) => ({
+  ...(prevMarks || {}),
+  [id]: Math.max(prevMarks?.[id] || 0, lv)
+});
+
+// 自動購入がそのLvまで進んでよいか
+const autoBuyAllowed = (s, id, nextLv) => (s.manualBuyMax?.[id] || 0) >= nextLv;
+
+const FORESIGHT_DEF = [
+  {
+    id: 'prophecyLv',
+    name: '未来予知・競馬記憶',
+    icon: '🐎',
+    short: '大穴的中イベントの配当 +6,500円/Lv',
+    baseG: 22000,
+    basePt: 18,
+    growth: 1.72,
+    maxLv: 20
+  },
+  {
+    id: 'stockLv',
+    name: '相場の記憶（株式）',
+    icon: '📈',
+    short: '毎月の配当収入 +9,000円/Lv',
+    baseG: 45000,
+    basePt: 24,
+    growth: 1.78,
+    maxLv: 20
+  },
+  {
+    id: 'cryptoLv',
+    name: '暗号資産の記憶',
+    icon: '🪙',
+    short: '試合賞金 +7%/Lv（上がり幅が大きい）',
+    baseG: 90000,
+    basePt: 32,
+    growth: 1.95,
+    maxLv: 20
+  }
+];
+
 // 進行速度と一時停止は localStorage に残す。
 //
 // 本人の指摘（2026-11-28）:
@@ -2972,9 +3023,15 @@ const computeIndividualStatCaps = (
 
   const pool = rawPool * stageMult * divineMult * ch4Penalty * ageCapMult;
 
-  const bodyGrowthLimiter =
-    age >= 18 ? 1.0 : age >= 15 ? 0.65 : age >= 12 ? 0.36 : age >= 8 ? 0.2 : 0.14;
-  const brainLimiter = age >= 15 ? 1.0 : age >= 12 ? 0.85 : 0.72;
+  // 年齢による上限リミッター。
+  // 上位転生を重ねるほど「子どもの体」という制約が薄れる。
+  // 第3段階（ascensionCount 3）で完全に消える＝5歳から全盛期の力が出る。
+  const ascEase = Math.min(1, (ascensionCount || 0) / 3);
+  const easeToOne = (v) => v + (1 - v) * ascEase;
+  const bodyGrowthLimiter = easeToOne(
+    age >= 18 ? 1.0 : age >= 15 ? 0.65 : age >= 12 ? 0.36 : age >= 8 ? 0.2 : 0.14
+  );
+  const brainLimiter = easeToOne(age >= 15 ? 1.0 : age >= 12 ? 0.85 : 0.72);
 
   const pos = POSITIONS[position] || POSITIONS.CF;
   const body = BODY_TYPES[bodyType] || BODY_TYPES.balanced;
@@ -3430,7 +3487,10 @@ export default function App() {
         tacticalMastery: { balanced: 0, gegenpress: 0, tikitaka: 0, catenaccio: 0 },
         euroMastery: { england: 0, spain: 0, italy: 0, france: 0 },
         retainedHobbies: {},
-        prophecyLv: 0
+        prophecyLv: 0,
+        stockLv: 0,
+        cryptoLv: 0,
+        manualBuyMax: {}
       },
       inheritedBreakthroughs = {},
       inheritedHabitMastery = {},
@@ -3446,6 +3506,7 @@ export default function App() {
         preferredPartner: null,
         preferredEuroCountry: null,
         autoReincarnate: false,
+        autoLeapOnChallengeClear: true,
         hideCompleted: false,
         pauseOnRebirth: false
       },
@@ -3510,7 +3571,10 @@ export default function App() {
       const initUpgrades = isGearBanned ? {} : carriedUpgrades ? { ...carriedUpgrades } : {};
 
       const retainedHobbies = { ...(persistentPerks.retainedHobbies || {}) };
+      const manualBuyMax = { ...(persistentPerks.manualBuyMax || {}) };
       const prophecyLv = persistentPerks.prophecyLv || 0;
+      const stockLv = persistentPerks.stockLv || 0;
+      const cryptoLv = persistentPerks.cryptoLv || 0;
 
       // タイムリープすると弟子との関係もゼロに戻る。
       // 向こうはこちらを覚えていないし、まだ出会ってもいない（docs/GAME_DESIGN.md §2）。
@@ -3635,6 +3699,7 @@ export default function App() {
           preferredPartner: qolToggles.preferredPartner || null,
           preferredEuroCountry: qolToggles.preferredEuroCountry || null,
           autoReincarnate: Boolean(qolToggles.autoReincarnate),
+          autoLeapOnChallengeClear: qolToggles.autoLeapOnChallengeClear !== false,
           // 転生した直後に時間を止めるか。止めれば落ち着いて方針を決められる
           // 既定は「止めない」。
           // 本人の指摘（2026-11-28）:「転生後に停止して8倍速も解除されるような部分があるが、
@@ -3651,6 +3716,9 @@ export default function App() {
         breakthroughs: persistBt,
         hobbies: retainedHobbies,
         prophecyLv,
+        stockLv,
+        cryptoLv,
+        manualBuyMax,
         brandProjects: { school_tour: 0, sig_brand: 0 },
         endlessInvest: { endless_lab: 0, endless_ai: 0, endless_fund: 0 },
 
@@ -3897,7 +3965,10 @@ export default function App() {
           tacticalMastery: parsed.tacticalMastery || { balanced: 0, gegenpress: 0, tikitaka: 0, catenaccio: 0 },
           euroMastery: parsed.euroMastery || { england: 0, spain: 0, italy: 0, france: 0 },
           retainedHobbies: parsed.hobbies || {},
-          prophecyLv: parsed.prophecyLv || 0
+          prophecyLv: parsed.prophecyLv || 0,
+          stockLv: parsed.stockLv || 0,
+          cryptoLv: parsed.cryptoLv || 0,
+          manualBuyMax: parsed.manualBuyMax || {}
         },
         parsed.breakthroughs || {},
         parsed.mastery || {},
@@ -3930,6 +4001,7 @@ export default function App() {
           preferredPartner: parsed.qolToggles?.preferredPartner || null,
           preferredEuroCountry: parsed.qolToggles?.preferredEuroCountry || null,
           autoReincarnate: Boolean(parsed.qolToggles?.autoReincarnate),
+          autoLeapOnChallengeClear: parsed.qolToggles?.autoLeapOnChallengeClear !== false,
           hideCompleted: Boolean(parsed.qolToggles?.hideCompleted)
         },
         life: {
@@ -4996,9 +5068,18 @@ export default function App() {
       // 銀河系リーグ（cat15）以上、または上位転生を経た存在だけが、
       // ポジションを無視して点を取れる。
       const baseShare = posObj.statShare || { goal: 0.2, assist: 0.2 };
-      const isCosmic = s.categoryId >= 15 || (s.ascensionCount || 0) >= 1;
-      const goalShare = isCosmic ? Math.max(baseShare.goal, 0.4) : baseShare.goal;
-      const assistShare = isCosmic ? Math.max(baseShare.assist, 0.3) : baseShare.assist;
+      // ポジションを無視して点を取れるのは、その試合で相手を圧倒しているときだけ。
+      //   戦力比3倍以上  : 誰が前に出ても誰も困らない
+      //   銀河系リーグ以上で1.8倍: 競技の形がもう違う
+      // 数字の裏づけなしに「上位転生したからGKでも点が取れる」にはしない。
+      const overwhelm = ratio >= 3.0 || (s.categoryId >= 15 && ratio >= 1.8);
+      const cosmicShare = Math.min(1, (ratio - 1.5) * 0.25);
+      const goalShare = overwhelm
+        ? Math.max(baseShare.goal, 0.4 * cosmicShare)
+        : baseShare.goal;
+      const assistShare = overwhelm
+        ? Math.max(baseShare.assist, 0.3 * cosmicShare)
+        : baseShare.assist;
       let myG = 0;
       let myA = 0;
       for (let i = 0; i < myGoals; i++) {
@@ -5040,6 +5121,7 @@ export default function App() {
       const feverMoneyMult = (s.zoneFeverMonths || 0) > 0 ? 1.6 : 1.0;
       const activeMoneyMult =
         (1 + (u.sponsor_deal || 0) * 0.12) *
+        (1 + (s.cryptoLv || 0) * 0.07) *
         (1 + (hb.supercar || 0) * 0.08) *
         (1 + (g.hobby_master_dna || 0) * 0.04) *
         (1 + (g.local_club_dna || 0) * 0.05) *
@@ -5370,8 +5452,13 @@ export default function App() {
       const sigBrandLv = newState.brandProjects?.sig_brand || 0;
       const prophecyLv = newState.prophecyLv || 0;
 
+      const stockLvNow = newState.stockLv || 0;
       const partTimeG =
-        (newState.upgrades?.part_time || 0) * 1200 + stadiumLv * 4500 + sigBrandLv * 8500 + prophecyLv * 5500;
+        (newState.upgrades?.part_time || 0) * 1200 +
+        stadiumLv * 4500 +
+        sigBrandLv * 8500 +
+        prophecyLv * 5500 +
+        stockLvNow * 9000;
       const clinicPt = (newState.upgrades?.school_clinic || 0) * 6 + prophecyLv * 8;
       const passiveFans = sigBrandLv * 40 + stadiumLv * 15;
       if (partTimeG > 0) newState.money += partTimeG;
@@ -5514,6 +5601,11 @@ export default function App() {
                 `区切りをつけて次の人生へ持っていってもいい。`,
               offerLeap: true
             };
+            // 設定がONなら、そのまま区切りをつける。
+            // 本文モーダルは出たままなので、読んでから次へ進む形になる。
+            if (newState.qolToggles?.autoLeapOnChallengeClear !== false) {
+              newState.endLifeRequested = true;
+            }
           }
           if (!suppressToast) {
             pushToast(`⚔️ ${chDef.code} 制覇！`, chDef.rewardText, 'amber');
@@ -5584,6 +5676,7 @@ export default function App() {
             if (upg.requiresId && (newState.legacyUpgrades?.[upg.requiresId] || 0) < 1) return false;
             const lv = newState.legacyUpgrades?.[upg.id] || 0;
             if (lv >= upg.maxLv) return false;
+            if (!autoBuyAllowed(newState, upg.id, lv + 1)) return false;
             return (newState.legacyPoints || 0) >= Math.floor(upg.baseCost * Math.pow(upg.growth, lv));
           });
           if (affordable.length === 0) break;
@@ -5612,6 +5705,8 @@ export default function App() {
       ) {
         for (const bt of BREAKTHROUGHS_DEF) {
           if (newState.breakthroughs?.[bt.id]) continue;
+          // 一度も自分で買ったことのないブレイクスルーは自動で取らない
+          if (!autoBuyAllowed(newState, bt.id, 1)) continue;
           if (newState.money < bt.costMoney || newState.tactics < bt.costTactics) continue;
           newState.money -= bt.costMoney;
           newState.tactics = Number((newState.tactics - bt.costTactics).toFixed(1));
@@ -5646,6 +5741,7 @@ export default function App() {
           // 無制限投資
           for (const item of ENDLESS_INVEST_DEF) {
             const lv = newState.endlessInvest?.[item.id] || 0;
+            if (!autoBuyAllowed(newState, item.id, lv + 1)) continue;
             const g = Math.floor(item.baseG * Math.pow(ENDLESS_INVEST_GROWTH, lv));
             const pt = Math.floor(item.basePt * Math.pow(ENDLESS_INVEST_GROWTH, lv));
             if (newState.money >= g * 1.5 && newState.tactics >= pt * 1.3) {
@@ -5662,6 +5758,7 @@ export default function App() {
             for (const mate of LOCAL_CLUB_MATES) {
               const lv = newState.clubMates?.[mate.id] || 1;
               if (lv >= mate.maxLv) continue;
+              if (!autoBuyAllowed(newState, mate.id, lv + 1)) continue;
               const g = Math.floor(mate.baseG * Math.pow(mate.growth, lv));
               const pt = Math.floor(mate.basePt * Math.pow(mate.growth, lv));
               if (newState.money >= g * 1.5 && newState.tactics >= pt * 1.3) {
@@ -5675,6 +5772,7 @@ export default function App() {
             for (const fac of LOCAL_CLUB_FACILITIES) {
               const lv = newState.clubFacilities?.[fac.id] || 0;
               if (lv >= fac.maxLv) continue;
+              if (!autoBuyAllowed(newState, fac.id, lv + 1)) continue;
               const g = Math.floor(fac.baseG * Math.pow(fac.growth, lv));
               const pt = Math.floor(fac.basePt * Math.pow(fac.growth, lv));
               if (newState.money >= g * 1.5 && newState.tactics >= pt * 1.3) {
@@ -5766,6 +5864,8 @@ export default function App() {
             if (upg.minFans && (newState.fans || 0) < upg.minFans) continue;
             const curLv = newState.upgrades?.[upg.id] || 0;
             if (curLv >= upg.maxLv) continue;
+            // 自分で買ったことのある段階までしか自動で進まない
+            if (!autoBuyAllowed(newState, upg.id, curLv + 1)) continue;
             const costG = Math.floor(upg.baseG * Math.pow(upg.growth, curLv));
             const costPt = Math.floor(upg.basePt * Math.pow(upg.growth, curLv));
             // 1.4 / 1.2 の余裕は、他に使う資金を残すため
@@ -5920,7 +6020,8 @@ export default function App() {
           newState.lastRomanceMonth !== romanceMonth &&
           newState.age >= 15 &&
           newState.money >= 5000 &&
-          (newState.life.affection || 0) < AFFECTION_MAX
+          ((newState.life.affection || 0) < AFFECTION_MAX ||
+            ((newState.life.affection || 0) >= AFFECTION_MARRY && newState.age >= 18))
         ) {
           // 相手を決めてあれば、条件を満たした時点でその人に切り替える。
           // 本人の要望（2026-11-26）:「結婚相手もだが、あらかじめ決めておけば」
@@ -6777,6 +6878,7 @@ export default function App() {
       if (calc.count === 0) return prev;
 
       const nextUpgrades = { ...prev.upgrades, [upg.id]: calc.nextLv };
+      const nextManualMarks = markManualBuy(prev.manualBuyMax, upg.id, calc.nextLv);
       const memLv = prev.legacyUpgrades?.tactical_memory || 0;
       const schedLv = nextUpgrades.ai_schedule || 0;
       const nextMaxAuto = prev.breakthroughs?.smart_auto_all
@@ -6797,6 +6899,7 @@ export default function App() {
         money: prev.money - calc.totalG,
         tactics: Number((prev.tactics - calc.totalPt).toFixed(1)),
         upgrades: nextUpgrades,
+        manualBuyMax: nextManualMarks,
         maxAutoSlots: nextMaxAuto,
         autoActions: nextAutoActions,
         maxStamina: upg.id === 'agility_gear' ? prev.maxStamina + 4 * calc.count : prev.maxStamina
@@ -6829,6 +6932,7 @@ export default function App() {
         money: prev.money - bt.costMoney,
         tactics: Number((prev.tactics - bt.costTactics).toFixed(1)),
         breakthroughs: nextBt,
+        manualBuyMax: markManualBuy(prev.manualBuyMax, bt.id, 1),
         unlocks: nextUnlocks,
         autoActions: nextAuto,
         maxAutoSlots: nextMaxAuto,
@@ -6880,23 +6984,34 @@ export default function App() {
     });
   };
 
-  // --- 未来予知・競馬＆投資記憶アップグレード（1x / 10x / MAX統一・記憶永続） ---
-  const upgradeProphecyMemory = () => {
+  // --- 前の人生の記憶で稼ぐ（1x / 10x / MAX統一・記憶永続） ---
+  const upgradeForesight = (defId) => {
+    const def = FORESIGHT_DEF.find((d) => d.id === defId);
+    if (!def) return;
     setGameState((prev) => {
-      const curLv = prev.prophecyLv || 0;
-      const maxLv = 20;
-      if (curLv >= maxLv) return prev;
-      const calc = calcBulkPurchase(curLv, maxLv, buyAmount, prev.money, prev.tactics, 22000, 120, 1.82);
+      const curLv = prev[def.id] || 0;
+      if (curLv >= def.maxLv) return prev;
+      const calc = calcBulkPurchase(
+        curLv,
+        def.maxLv,
+        buyAmount,
+        prev.money,
+        prev.tactics,
+        def.baseG,
+        def.basePt,
+        def.growth
+      );
       if (calc.count === 0) return prev;
 
       const next = {
         ...prev,
         money: prev.money - calc.totalG,
         tactics: Number((prev.tactics - calc.totalPt).toFixed(1)),
-        prophecyLv: calc.nextLv
+        [def.id]: calc.nextLv,
+        manualBuyMax: { ...(prev.manualBuyMax || {}), [def.id]: calc.nextLv }
       };
-      addLogMsg(next, `🐎【未来予知記憶】競馬・投資記憶 Lv.${calc.nextLv}（毎月副収入＆大穴イベント強化）`, 'levelup');
-      pushToast(`🐎 未来予知記憶 Lv.${calc.nextLv}`, 'タイムリープ記憶の予知投資が永続強化されました！', 'amber');
+      addLogMsg(next, `${def.icon}【${def.name}】Lv.${calc.nextLv}（${def.short}）`, 'levelup');
+      pushToast(`${def.icon} ${def.name} Lv.${calc.nextLv}`, def.short, 'amber');
       return next;
     });
   };
@@ -6990,7 +7105,8 @@ export default function App() {
         ...prev,
         money: prev.money - calc.totalG,
         tactics: Number((prev.tactics - calc.totalPt).toFixed(1)),
-        clubMates: { ...(prev.clubMates || {}), [mate.id]: calc.nextLv }
+        clubMates: { ...(prev.clubMates || {}), [mate.id]: calc.nextLv },
+        manualBuyMax: markManualBuy(prev.manualBuyMax, mate.id, calc.nextLv)
       };
       addLogMsg(next, `🏟️【蒼空FC同僚強化】${mate.name}[${mate.pos}] Lv.${calc.nextLv}へ成長！（+${calc.count}Lv）`, 'info');
       checkGenomeAwakening(next);
@@ -7020,7 +7136,8 @@ export default function App() {
         ...prev,
         money: prev.money - calc.totalG,
         tactics: Number((prev.tactics - calc.totalPt).toFixed(1)),
-        clubFacilities: { ...(prev.clubFacilities || {}), [fac.id]: calc.nextLv }
+        clubFacilities: { ...(prev.clubFacilities || {}), [fac.id]: calc.nextLv },
+        manualBuyMax: markManualBuy(prev.manualBuyMax, fac.id, calc.nextLv)
       };
       addLogMsg(next, `🏗️【蒼空FC施設拡充】${fac.name} Lv.${calc.nextLv}へ拡張！（+${calc.count}Lv）`, 'info');
       checkGenomeAwakening(next);
@@ -7077,7 +7194,8 @@ export default function App() {
         ...prev,
         money: prev.money - calc.totalG,
         tactics: Number((prev.tactics - calc.totalPt).toFixed(1)),
-        endlessInvest: { ...(prev.endlessInvest || {}), [id]: calc.nextLv }
+        endlessInvest: { ...(prev.endlessInvest || {}), [id]: calc.nextLv },
+        manualBuyMax: markManualBuy(prev.manualBuyMax, id, calc.nextLv)
       };
       next.statCaps = computeIndividualStatCaps(
         next.generation,
@@ -7315,7 +7433,11 @@ export default function App() {
       if (prev.money < costG || prev.mental < costM) return prev;
 
       const baseAff = prev.life.partnerType === pType ? prev.life.affection || 0 : 0;
-      if (baseAff >= AFFECTION_MAX) return prev;
+      // 好感度が上限でも、まだ結婚していなければ通す。
+      // ここで弾くと、18歳になる前に上限へ達した相手と永久に結婚できなくなる。
+      if (baseAff >= AFFECTION_MAX && prev.life.married) return prev;
+      // 上限に達していて、まだ結婚できる年齢でもない場合だけ止める
+      if (baseAff >= AFFECTION_MAX && prev.age < 18) return prev;
 
       const newAff = Math.min(AFFECTION_MAX, baseAff + AFFECTION_PER_DATE);
       const milestone = reachedMilestone(baseAff, newAff);
@@ -7559,7 +7681,10 @@ export default function App() {
         unlockedTraits: [...(prev.unlockedTraits || [])],
         equippedTraits: [...(prev.equippedTraits || [])],
         hobbies: { ...(prev.hobbies || {}) },
-        prophecyLv: prev.prophecyLv || 0
+        prophecyLv: prev.prophecyLv || 0,
+        stockLv: prev.stockLv || 0,
+        cryptoLv: prev.cryptoLv || 0,
+        manualBuyMax: { ...(prev.manualBuyMax || {}) }
       };
 
       const nextGenNum = (prev.totalGenerations || prev.generation) + 1;
@@ -7629,7 +7754,10 @@ export default function App() {
           tacticalMastery: { ...(prev.tacticalMastery || {}) },
           euroMastery: { ...(prev.euroMastery || {}) },
           retainedHobbies: { ...(prev.hobbies || {}) },
-          prophecyLv: prev.prophecyLv || 0
+          prophecyLv: prev.prophecyLv || 0,
+          stockLv: prev.stockLv || 0,
+          cryptoLv: prev.cryptoLv || 0,
+          manualBuyMax: { ...(prev.manualBuyMax || {}) }
         },
         prev.breakthroughs,
         prev.mastery,
@@ -7721,7 +7849,10 @@ export default function App() {
           tacticalMastery: { ...(prev.tacticalMastery || {}) },
           euroMastery: { ...(prev.euroMastery || {}) },
           retainedHobbies: snap ? snap.hobbies : { ...(prev.hobbies || {}) },
-          prophecyLv: snap ? snap.prophecyLv : prev.prophecyLv || 0
+          prophecyLv: snap ? snap.prophecyLv : prev.prophecyLv || 0,
+          stockLv: snap ? snap.stockLv || 0 : prev.stockLv || 0,
+          cryptoLv: snap ? snap.cryptoLv || 0 : prev.cryptoLv || 0,
+          manualBuyMax: { ...(prev.manualBuyMax || {}) }
         },
         snap ? snap.breakthroughs : prev.breakthroughs,
         snap ? snap.mastery : prev.mastery,
@@ -7752,6 +7883,7 @@ export default function App() {
       if (calc.count === 0) return prev;
 
       const nextLegacyUpgrades = { ...prev.legacyUpgrades, [upg.id]: calc.nextLv };
+      const nextLegacyMarks = markManualBuy(prev.manualBuyMax, upg.id, calc.nextLv);
       const memLv = nextLegacyUpgrades.tactical_memory || 0;
       const schedLv = prev.upgrades?.ai_schedule || 0;
       const newCaps = computeIndividualStatCaps(
@@ -7790,6 +7922,7 @@ export default function App() {
         ...prev,
         legacyPoints: prev.legacyPoints - calc.totalCost,
         legacyUpgrades: nextLegacyUpgrades,
+        manualBuyMax: nextLegacyMarks,
         qolToggles: nextQol,
         autoActions: nextAutoActions,
         statCaps: newCaps,
@@ -8044,7 +8177,10 @@ export default function App() {
             tacticalMastery: { ...(workingPrev.tacticalMastery || {}) },
             euroMastery: { ...(workingPrev.euroMastery || {}) },
             retainedHobbies: { ...(workingPrev.hobbies || {}) },
-            prophecyLv: workingPrev.prophecyLv || 0
+            prophecyLv: workingPrev.prophecyLv || 0,
+            stockLv: workingPrev.stockLv || 0,
+            cryptoLv: workingPrev.cryptoLv || 0,
+            manualBuyMax: { ...(workingPrev.manualBuyMax || {}) }
           },
           {},
           isSecondPlusAsc ? {} : { ...(workingPrev.mastery || {}) },
@@ -8173,7 +8309,10 @@ export default function App() {
             tacticalMastery: { ...(workingPrev.tacticalMastery || {}) },
             euroMastery: { ...(workingPrev.euroMastery || {}) },
             retainedHobbies: { ...(workingPrev.hobbies || {}) },
-            prophecyLv: workingPrev.prophecyLv || 0
+            prophecyLv: workingPrev.prophecyLv || 0,
+            stockLv: workingPrev.stockLv || 0,
+            cryptoLv: workingPrev.cryptoLv || 0,
+            manualBuyMax: { ...(workingPrev.manualBuyMax || {}) }
           },
           workingPrev.breakthroughs,
           workingPrev.mastery,
@@ -8749,9 +8888,9 @@ ${activeChObj.rewardText}`}
           <button
             onClick={() => setTutorialModalOpen(true)}
             className="px-1.5 py-0.5 text-[9.5px] font-mono bg-indigo-950 border border-indigo-600 text-indigo-200 hover:text-white cursor-pointer"
-            title="v0.42 ガイドを表示"
+            title="v0.43 ガイドを表示"
           >
-            v0.42
+            v0.43
           </button>
           <button
             onClick={() => {
@@ -8794,6 +8933,22 @@ ${activeChObj.rewardText}`}
           総合 <span className="text-white font-bold">{formatNum(rating, 1)}</span>
           <span className="text-slate-500"> (最高{formatNum(gameState.peakRatingReached || 0, 1)})</span>
         </span>
+        {activeChObj && (
+          <>
+            <span className="text-slate-600">/</span>
+            <span
+              className={activeChDone ? 'text-emerald-300 font-bold' : 'text-rose-300'}
+              title={`${activeChObj.ruleText}\n${activeChObj.goalText}`}
+            >
+              縛り{activeChObj.code}:{' '}
+              {activeChCleared
+                ? '制覇済'
+                : activeChDone
+                  ? '条件達成'
+                  : (activeChObj.goalText || '').replace(/^目標：/, '')}
+            </span>
+          </>
+        )}
         {gameState.life?.married && (
           <>
             <span className="text-slate-600">/</span>
@@ -10122,31 +10277,36 @@ ${activeChObj.rewardText}`}
                           <span className="font-bold text-amber-300">
                             🧠 頭の中の知識・趣味
                           </span>
-                          <div className="flex items-center gap-1">
-                            {(() => {
-                              const pLv = gameState.prophecyLv || 0;
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {FORESIGHT_DEF.map((def) => {
+                              const lv = gameState[def.id] || 0;
+                              const isMax = lv >= def.maxLv;
                               const calc = calcBulkPurchase(
-                                pLv,
-                                20,
+                                lv,
+                                def.maxLv,
                                 buyAmount,
                                 gameState.money,
                                 gameState.tactics,
-                                22000,
-                                120,
-                                1.82
+                                def.baseG,
+                                def.basePt,
+                                def.growth
                               );
+                              const singleG = Math.floor(def.baseG * Math.pow(def.growth, lv));
+                              const singlePt = Math.floor(def.basePt * Math.pow(def.growth, lv));
                               return (
                                 <button
-                                  onClick={upgradeProphecyMemory}
-                                  disabled={pLv >= 20 || calc.count === 0}
+                                  key={def.id}
+                                  onClick={() => upgradeForesight(def.id)}
+                                  disabled={isMax || calc.count === 0}
+                                  title={`${def.name}：${def.short}`}
                                   className="px-1.5 py-0.5 bg-amber-900/70 hover:bg-amber-800 disabled:opacity-45 border border-amber-500 text-amber-200 text-[8px] font-mono cursor-pointer"
                                 >
-                                  🐎 未来予知・競馬記憶 Lv.{pLv}/20{' '}
-                                  {pLv >= 20
+                                  {def.icon} {def.name} Lv.{lv}/{def.maxLv}{' '}
+                                  {isMax
                                     ? '(MAX)'
                                     : calc.count > 1
                                       ? `(+${calc.count}Lv: ${formatYen(calc.totalG)})`
-                                      : `(${formatYen(Math.floor(22000 * Math.pow(1.82, pLv)))})`}
+                                      : `(${formatYen(singleG)}/${formatNum(singlePt)}Pt)`}
                                 </button>
                               );
                             })()}
@@ -10193,7 +10353,7 @@ ${activeChObj.rewardText}`}
                                   👟 ブランド Lv.{bLv} {calc.count > 1 ? `(+${calc.count}Lv)` : '(1,500ファン)'}
                                 </button>
                               );
-                            })()}
+                            })}
                           </div>
                         </div>
 
@@ -11539,6 +11699,21 @@ ${activeChObj.rewardText}`}
                   className="accent-sky-400"
                 />
                 転生した直後に時間を止める（方針を決めてから再開できる）
+              </label>
+
+              <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={gameState.qolToggles?.autoLeapOnChallengeClear !== false}
+                  onChange={(e) =>
+                    setGameState((prev) => ({
+                      ...prev,
+                      qolToggles: { ...prev.qolToggles, autoLeapOnChallengeClear: e.target.checked }
+                    }))
+                  }
+                  className="accent-sky-400"
+                />
+                縛りを達成したら、そのまま区切りをつける
               </label>
 
               <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
